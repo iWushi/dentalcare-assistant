@@ -7,17 +7,14 @@ let chatInstance: Chat | null = null;
 const getClient = (): GoogleGenAI => {
   if (!client) {
     // A API Key é injectada pelo Vite via define no vite.config.ts
-    // Não usar verificação de 'process' aqui pois falha no browser
     const apiKey = process.env.API_KEY;
     
-    if (!apiKey) {
-      console.error("❌ ERRO CRÍTICO: A API Key do Gemini NÃO foi detectada. O chat não funcionará.");
-      console.info("Dica: Verifique as variáveis de ambiente no Vercel ou ficheiro .env");
-    } else {
-      console.log("✅ Sucesso: API Key do Gemini detectada.");
+    if (!apiKey || apiKey === 'undefined') {
+      console.error("❌ ERRO CRÍTICO: API Key em falta.");
+      throw new Error("API_KEY_MISSING");
     }
     
-    client = new GoogleGenAI({ apiKey: apiKey || 'dummy_key' });
+    client = new GoogleGenAI({ apiKey });
   }
   return client;
 };
@@ -49,8 +46,6 @@ export const sendMessageStream = async (
     throw new Error("Chat instance is not initialized");
   }
 
-  // Se houver contexto de dados, injetamos de forma "invisível" para o utilizador final no histórico,
-  // mas visível para o modelo na mensagem actual.
   let finalMessage = message;
   if (dataContext) {
     finalMessage = `${message}\n\n[DATABASE_CONTEXT]\n${dataContext}\n\n[INSTRUCTION]\nUse the context above to answer the user query if needed.`;

@@ -54,13 +54,7 @@ const ChatPage: React.FC = () => {
          setChatInitialized(true);
        } catch (e) {
          console.error("Initialization error", e);
-         setMessages(prev => [...prev, {
-            id: 'err-init',
-            role: Role.MODEL,
-            text: "⚠️ Could not connect to AI. Please check your API Key.",
-            timestamp: new Date(),
-            isError: true
-         }]);
+         // Não mostramos erro visual no init, apenas quando o user tenta enviar msg
        }
     }
     init();
@@ -201,14 +195,24 @@ const ChatPage: React.FC = () => {
         }
       }
 
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      console.error("Chat Error:", error);
+      
+      let errorMessage = "Desculpe, ocorreu um erro ao processar o seu pedido. Por favor, tente novamente.";
+      
+      // Detect specific configuration errors
+      const errStr = String(error?.message || error);
+      
+      if (errStr.includes("API_KEY_MISSING") || errStr.includes("API key not valid") || errStr.includes("400")) {
+        errorMessage = "⚠️ **ERRO DE CONFIGURAÇÃO:**\n\nA API Key do Gemini não foi detectada ou é inválida.\n\n**Como corrigir no Vercel:**\n1. Vá a Settings > Environment Variables\n2. Adicione `API_KEY` com a sua chave\n3. Faça **Redeploy** da aplicação.";
+      }
+
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now().toString(),
           role: Role.MODEL,
-          text: "Desculpe, ocorreu um erro ao processar o seu pedido. Por favor, tente novamente.",
+          text: errorMessage,
           timestamp: new Date(),
           isError: true,
         },
