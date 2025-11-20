@@ -6,14 +6,15 @@ let chatInstance: Chat | null = null;
 
 const getClient = (): GoogleGenAI => {
   if (!client) {
-    // Safety check for process to prevent browser crashes if env is not polyfilled
-    const apiKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : '';
+    // A API Key é injectada pelo Vite via define no vite.config.ts
+    // Não usar verificação de 'process' aqui pois falha no browser
+    const apiKey = process.env.API_KEY;
     
     if (!apiKey) {
       console.error("❌ ERRO CRÍTICO: A API Key do Gemini NÃO foi detectada. O chat não funcionará.");
-      console.info("Dica: Se não tens um ficheiro .env, verifica as definições do teu editor ou injeta a chave manualmente.");
+      console.info("Dica: Verifique as variáveis de ambiente no Vercel ou ficheiro .env");
     } else {
-      console.log("✅ Sucesso: API Key do Gemini detectada e configurada.");
+      console.log("✅ Sucesso: API Key do Gemini detectada.");
     }
     
     client = new GoogleGenAI({ apiKey: apiKey || 'dummy_key' });
