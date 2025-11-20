@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -103,7 +104,7 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="pb-20 p-4 max-w-lg mx-auto space-y-6">
+    <div className="pb-32 p-4 max-w-lg mx-auto space-y-6">
       <header className="flex justify-between items-center">
         <div>
           <h1 className="text-xl font-semibold text-slate-800">DentalCare</h1>
@@ -232,7 +233,11 @@ const Dashboard: React.FC = () => {
                        {cons.clinic === CLINICS.SOMMERSCHIELD ? 'Somm.' : 'Baixa'}
                      </span>
                      <p className="text-xs text-slate-400 truncate max-w-[150px]">
-                        {cons.procedures.map(p => p.code).join(', ')}
+                        {cons.procedures.map(p => {
+                           // Safety check for display
+                           if (!p.code || p.code.length > 10 || p.code.includes('{') || p.code.includes('[')) return '??';
+                           return p.code;
+                        }).join(', ')}
                      </p>
                    </div>
                 </div>

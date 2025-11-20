@@ -22,7 +22,7 @@ const PatientDetails: React.FC = () => {
   };
 
   return (
-    <div className="pb-20 p-4 max-w-3xl mx-auto">
+    <div className="pb-32 p-4 max-w-3xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
          <Link to="/patients" className="p-2 -ml-2 rounded-full hover:bg-gray-100 text-gray-600">
             <ArrowLeft size={24} />

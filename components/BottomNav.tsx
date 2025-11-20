@@ -12,8 +12,11 @@ const BottomNav: React.FC = () => {
   ];
 
   return (
-    // Ajuste para 85% opacity e backdrop-blur-md para efeito vidro nítido
-    <nav className="bg-white/85 backdrop-blur-md border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] fixed bottom-0 left-0 right-0 z-50 pb-safe transition-all duration-200">
+    // Ajuste: Remove pb-safe class, add style with extra padding (16px) to lift icons above Home Bar
+    <nav 
+      className="bg-white/85 backdrop-blur-md border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] fixed bottom-0 left-0 right-0 z-50 transition-all duration-200"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+    >
       <div className="flex justify-around items-center h-14">
         {navItems.map((item) => (
           <NavLink

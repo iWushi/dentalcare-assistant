@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { 
@@ -141,7 +142,6 @@ const Reports: React.FC = () => {
     const commBaixa = baixa.reduce((sum, c) => sum + (Number(c.doctorCommission) || 0), 0);
 
     // Pendências (Geral - Não apenas do periodo)
-    // Pendência = Toggle ON mas Custo 0/Empty
     const pendingLabs = safeConsultations.filter(c => 
         c.procedures && c.procedures.some(p => p.isLabPending && (!p.labCost || p.labCost === 0))
     );
@@ -152,7 +152,10 @@ const Reports: React.FC = () => {
     filtered.forEach(c => {
       if (c.procedures && Array.isArray(c.procedures)) {
         c.procedures.forEach(p => {
-            if (!p) return;
+            // PROTECÇÃO AGRESSIVA: 
+            // Se o código for inválido, JSON, ou muito longo, ignora.
+            if (!p || !p.code || typeof p.code !== 'string') return;
+            if (p.code.length > 10 || p.code.includes('{') || p.code.includes('[') || p.code.includes(':')) return;
             
             // New Formula for Reports too: ((Val - Lab) / 1.05) * 0.40
             const procValue = Number(p.value) || 0;
@@ -162,19 +165,13 @@ const Reports: React.FC = () => {
             
             // Tentar determinar a Categoria
             let catName = 'Geral';
-            if (p.name) {
-                catName = p.name.split(' ')[0];
-            }
-             
             let catColor = '#14B8A6'; // Default Teal
 
-            if (p.code) {
-                const firstLetter = p.code.charAt(0).toUpperCase();
-                const matchedCat = PROCEDURE_CATEGORIES.find(cat => cat.code === firstLetter);
-                if (matchedCat) {
-                    catName = matchedCat.name;
-                    catColor = matchedCat.color;
-                }
+            const firstLetter = p.code.charAt(0).toUpperCase();
+            const matchedCat = PROCEDURE_CATEGORIES.find(cat => cat.code === firstLetter);
+            if (matchedCat) {
+                catName = matchedCat.name;
+                catColor = matchedCat.color;
             }
             
             if (!catMap[catName]) {
@@ -194,6 +191,7 @@ const Reports: React.FC = () => {
     // Daily Trend Data for Chart
     const dailyDataMap: Record<string, number> = {};
     filtered.forEach(c => {
+       if (!c.date) return;
        const day = c.date.split('-')[2]; // DD
        dailyDataMap[day] = (dailyDataMap[day] || 0) + (c.doctorCommission || 0);
     });
@@ -266,7 +264,11 @@ const Reports: React.FC = () => {
     csvContent += `Data;Paciente;Clínica;Tratamento;Valor;Comissão\n`;
 
     sortedData.forEach((c) => {
-      const treatments = c.procedures.map(p => p.code).join(' + ');
+      const treatments = c.procedures
+          .map(p => (p.code && p.code.length < 10 && !p.code.includes('{')) ? p.code : '')
+          .filter(Boolean)
+          .join(' + ');
+
       const valStr = (c.totalValue || 0).toFixed(2).replace('.', ',');
       const commStr = (c.doctorCommission || 0).toFixed(2).replace('.', ',');
       const dateStr = formatDateBr(c.date);

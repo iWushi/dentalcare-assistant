@@ -92,6 +92,119 @@ const normalizeDate = (dateStr: any): string => {
   }
 };
 
+// Helper Crítico: Parse Robust de Procedimentos
+// Lida com: Array de Strings, Array de Objectos, String JSON, String Suja
+const parseProceduresRobust = (raw: any, totalValue: number, codeToNameMap: Map<string, string>): Procedure[] => {
+  let items: any[] = [];
+
+  try {
+    // 1. Normalizar entrada para array
+    if (Array.isArray(raw)) {
+      items = raw;
+    } else if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      
+      if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+         try {
+           const parsed = JSON.parse(trimmed);
+           items = Array.isArray(parsed) ? parsed : [parsed];
+         } catch {
+           // JSON parse falhou (string malformada ou cortada).
+           // Tentar extrair códigos via Regex (pinça cirúrgica)
+           // Procura padrões como "code":"A1" ou code:'A1' ou code: A1
+           const regex = /["']?code["']?\s*:\s*["']?([^"'},\]\s]+)["']?/gi;
+           let match;
+           const extracted = [];
+           while ((match = regex.exec(trimmed)) !== null) {
+               if (match[1] && match[1].length < 10) {
+                   extracted.push({ code: match[1], name: 'Recuperado' });
+               }
+           }
+           
+           if (extracted.length > 0) {
+               items = extracted;
+           } else if (!trimmed.includes(':') && !trimmed.includes('{')) {
+               // Se não tem cara de JSON, assume separado por vírgula
+               items = trimmed.split(',');
+           } else {
+               // É lixo JSON irrecuperável
+               items = []; 
+           }
+         }
+      } else {
+         items = trimmed.split(',');
+      }
+    } else if (raw) {
+      items = [raw];
+    }
+  } catch (e) {
+    console.error("Erro crítico a normalizar procedimentos", e);
+    items = [];
+  }
+
+  // 2. Mapear cada item para a estrutura Procedure
+  return items.map((item, index) => {
+      if (!item) return null;
+
+      // Caso A: Objecto
+      if (typeof item === 'object' && item !== null) {
+          let code = item.code || item.id;
+          
+          // Validação rígida: Se o código for um objecto ou muito longo, é lixo
+          if (!code || typeof code !== 'string' || code.length > 15 || code.includes('{') || code.includes('[')) {
+              return null; 
+          }
+
+          const name = item.name || item.descricao || codeToNameMap.get(String(code).toUpperCase()) || String(code);
+          
+          return {
+             code: String(code),
+             name: String(name),
+             value: Number(item.value) || (index === 0 ? totalValue : 0),
+             labCost: Number(item.labCost) || 0,
+             isLabPending: !!item.isLabPending
+          };
+      }
+
+      // Caso B: String
+      if (typeof item === 'string') {
+          let cleanStr = item.trim();
+
+          // Se a string começar por { ou [, é um JSON stringificado que sobreviveu
+          if (cleanStr.startsWith('{') || cleanStr.startsWith('[')) {
+              // Tentar regex na string individual
+              const match = cleanStr.match(/["']?code["']?\s*:\s*["']?([^"'},\]\s]+)["']?/i);
+              if (match && match[1] && match[1].length < 10) {
+                  const c = match[1].toUpperCase();
+                  const n = codeToNameMap.get(c) || c;
+                  return { code: c, name: n, value: 0, labCost: 0, isLabPending: false };
+              }
+              return null; // Lixo
+          }
+
+          // Limpeza final de aspas e brackets
+          cleanStr = cleanStr.replace(/['"\[\]]/g, ''); 
+          
+          // Se ainda tiver caracteres de JSON ou for muito longa, ignorar
+          if (cleanStr.length > 15 || cleanStr.includes(':') || cleanStr.includes('{')) return null;
+
+          const code = cleanStr.toUpperCase();
+          const description = codeToNameMap.get(code) || cleanStr;
+
+          return {
+              code: code,
+              name: description,
+              value: index === 0 ? totalValue : 0, // Legado assume valor total no primeiro
+              labCost: 0,
+              isLabPending: false
+          };
+      }
+
+      return null;
+  }).filter(Boolean) as Procedure[];
+};
+
+
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
@@ -150,73 +263,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const safeDoctorCommission = parseCurrency(c.valor_final_dra);
           const safeDate = normalizeDate(c.data);
 
-          // Parse JSONB procedures (handles both string[] and object[])
-          let proceduresList: Procedure[] = [];
-          const rawProcedures = c.procedimentos;
-          
-          if (Array.isArray(rawProcedures)) {
-             // Check if it's an array of strings or objects
-             if (rawProcedures.length > 0 && typeof rawProcedures[0] === 'string') {
-                 // Legacy: Array of strings
-                 const codes = rawProcedures as string[];
-                 proceduresList = codes.map((code: string, index: number) => {
-                    const description = codeToNameMap.get(code.toUpperCase()) || code;
-                    return {
-                        code: code,
-                        name: description,
-                        value: index === 0 ? safeTotalValue : 0, 
-                        isLabPending: false,
-                        labCost: 0
-                    };
-                });
-             } else {
-                 // New: Array of Objects
-                 proceduresList = rawProcedures;
-             }
-          } else if (typeof rawProcedures === 'string') {
-             let trimmed = rawProcedures.trim();
-             while (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-                 trimmed = trimmed.slice(1, -1);
-             }
-             if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-                try {
-                   const parsed = JSON.parse(trimmed);
-                   if (Array.isArray(parsed)) {
-                       // Recursive logic if string was stringified JSON
-                       if (parsed.length > 0 && typeof parsed[0] === 'string') {
-                           proceduresList = parsed.map((code: string, index: number) => {
-                                const description = codeToNameMap.get(code.toUpperCase()) || code;
-                                return {
-                                    code: code,
-                                    name: description,
-                                    value: index === 0 ? safeTotalValue : 0, 
-                                    isLabPending: false,
-                                    labCost: 0
-                                };
-                           });
-                       } else {
-                           proceduresList = parsed;
-                       }
-                   } else {
-                       proceduresList = [parsed];
-                   }
-                } catch (e) {
-                   proceduresList = [{ code: 'IMP', name: trimmed, value: safeTotalValue, isLabPending: false, labCost: 0 }];
-                }
-             } else {
-                const codes = trimmed.split(',').map((s: string) => s.trim().toUpperCase());
-                proceduresList = codes.map((code: string, index: number) => {
-                    const description = codeToNameMap.get(code) || code;
-                    return {
-                        code: code,
-                        name: description,
-                        value: index === 0 ? safeTotalValue : 0, 
-                        isLabPending: false,
-                        labCost: 0
-                    };
-                });
-             }
-          }
+          // Parse Robusto dos Procedimentos
+          const proceduresList = parseProceduresRobust(
+              c.procedimentos, 
+              safeTotalValue, 
+              codeToNameMap
+          );
 
           // Check pending based on object flags
           const hasPendingLab = Array.isArray(proceduresList) 
@@ -262,12 +314,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Calculate total lab cost to store in numeric column
       const totalLabCost = consultation.procedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
       
-      // Commission logic is handled in NewConsultation, here we just store values
-      // ((Total - Lab) / 1.05) * 0.40 already done in UI for display
-      
       // Re-calculate to be safe for DB consistency
       const totalVal = consultation.totalValue;
-      // The value without tax is technically (Total - Lab) / 1.05, but we keep legacy structure where possible
       const valorSemIva = (totalVal - totalLabCost) / 1.05; 
 
       const dbPayload = {
@@ -305,7 +353,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Helper to get current consultation state to merge procedures if needed
       const current = consultations.find(c => c.id === id);
-      const mergedProcedures = updates.procedures || current?.procedures || [];
       
       if (updates.date) dbUpdates.data = updates.date;
       if (updates.clinic) dbUpdates.clinica = updates.clinic;
@@ -399,8 +446,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
   };
-
-  // --- NEW: Data Cleanup Functions ---
 
   const deletePatient = async (id: string) => {
     try {

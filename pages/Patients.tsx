@@ -116,7 +116,7 @@ const Patients: React.FC = () => {
   };
 
   return (
-    <div className="pb-20 p-4 max-w-3xl mx-auto min-h-screen">
+    <div className="pb-32 p-4 max-w-3xl mx-auto min-h-screen">
        <div className="flex justify-between items-center mb-6">
         <div>
              <h1 className="text-xl font-semibold text-slate-800">Pacientes</h1>

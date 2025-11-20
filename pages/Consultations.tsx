@@ -176,7 +176,7 @@ const Consultations: React.FC = () => {
   };
 
   return (
-    <div className="pb-24 p-4 max-w-4xl mx-auto min-h-screen bg-gray-50">
+    <div className="pb-32 p-4 max-w-4xl mx-auto min-h-screen bg-gray-50">
        <header className="mb-6">
           <h1 className="text-2xl font-bold text-slate-800">Gestão de Consultas</h1>
           <p className="text-sm text-gray-500">Editar, apagar e corrigir registos</p>

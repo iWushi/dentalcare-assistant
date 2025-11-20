@@ -38,7 +38,8 @@ export const initializeChat = async (): Promise<void> => {
 };
 
 export const sendMessageStream = async (
-  message: string
+  message: string,
+  dataContext?: string
 ): Promise<AsyncIterable<GenerateContentResponse>> => {
   if (!chatInstance) {
     await initializeChat();
@@ -46,5 +47,13 @@ export const sendMessageStream = async (
   if (!chatInstance) {
     throw new Error("Chat instance is not initialized");
   }
-  return chatInstance.sendMessageStream({ message });
+
+  // Se houver contexto de dados, injetamos de forma "invisível" para o utilizador final no histórico,
+  // mas visível para o modelo na mensagem actual.
+  let finalMessage = message;
+  if (dataContext) {
+    finalMessage = `${message}\n\n[DATABASE_CONTEXT]\n${dataContext}\n\n[INSTRUCTION]\nUse the context above to answer the user query if needed.`;
+  }
+
+  return chatInstance.sendMessageStream({ message: finalMessage });
 };

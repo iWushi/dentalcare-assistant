@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Loader2, Sparkles, ArrowLeft, Mic, MicOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -5,6 +6,7 @@ import { Message, Role } from '../types';
 import { sendMessageStream, initializeChat } from '../services/geminiService';
 import ChatMessage from '../components/ChatMessage';
 import ReferencePanel from '../components/ReferencePanel';
+import { useData } from '../context/DataContext';
 
 const INITIAL_MESSAGE: Message = {
   id: 'init-1',
@@ -23,6 +25,7 @@ const QUICK_PROMPTS = [
 ];
 
 const ChatPage: React.FC = () => {
+  const { consultations, patients } = useData(); // Hook into DB data
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -123,6 +126,32 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  // Prepare DB Context
+  const prepareDatabaseContext = () => {
+    // Simplify data to save tokens, but keep essential fields
+    const simpleConsultations = consultations.map(c => ({
+      date: c.date,
+      patient: c.patientName,
+      clinic: c.clinic,
+      procedures: c.procedures.map(p => p.code).join(', '),
+      commission: c.doctorCommission,
+      hasPendingLab: c.hasPendingLab
+    }));
+
+    const simplePatients = patients.map(p => ({
+      name: p.name,
+      phone: p.phone,
+      notes: p.notes
+    }));
+
+    return JSON.stringify({
+      today: new Date().toISOString().split('T')[0],
+      summary: `Total Consultations: ${consultations.length}`,
+      consultations: simpleConsultations,
+      patients: simplePatients
+    });
+  };
+
   const handleSendMessage = async (textOverride?: string) => {
     const textToSend = textOverride || inputValue;
     if (!textToSend.trim() || isLoading) return;
@@ -141,7 +170,10 @@ const ChatPage: React.FC = () => {
     try {
       if (!chatInitialized) await initializeChat();
 
-      const result = await sendMessageStream(userMsg.text);
+      // INJECT DATA CONTEXT HERE
+      const dbContext = prepareDatabaseContext();
+
+      const result = await sendMessageStream(userMsg.text, dbContext);
       
       // Create a placeholder message for the bot response
       const botMsgId = (Date.now() + 1).toString();
@@ -210,7 +242,7 @@ const ChatPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)] lg:h-[calc(100vh-64px)] bg-gray-50 lg:flex-row pb-safe">
+    <div className="flex flex-col h-[calc(100vh-112px)] lg:h-[calc(100vh-64px)] bg-gray-50 lg:flex-row pb-safe">
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col h-full w-full max-w-5xl mx-auto bg-white lg:shadow-xl lg:my-4 lg:rounded-2xl lg:border lg:border-gray-200 overflow-hidden">
         
