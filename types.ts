@@ -1,3 +1,4 @@
+
 export enum Role {
   USER = 'user',
   MODEL = 'model',
@@ -26,7 +27,7 @@ export interface ChartDataPoint {
 }
 
 export interface Patient {
-  id: string;
+  id: string; // UUID do Supabase
   name: string;
   phone: string;
   notes: string;
@@ -41,17 +42,29 @@ export interface Procedure {
   isLabPending?: boolean;
 }
 
+// Interface nova para a tabela 'precos' da BD
+export interface DbPrice {
+  id: string; // ex: 'A1', 'B2'
+  categoria: string;
+  descricao: string;
+  valor_sem_iva: number;
+  valor_com_iva: number;
+  observacao?: string;
+  ativo: boolean;
+}
+
 export type Clinic = 'Sommerschield' | 'Baixa';
 
 export interface Consultation {
   id: string;
   date: string; // ISO string YYYY-MM-DD
-  createdAt?: string; // YYYY-MM-DD HH:MM
+  createdAt?: string; // ISO Timestamp
   patientId: string;
   patientName: string;
   clinic: Clinic;
   procedures: Procedure[];
   totalValue: number;
-  doctorCommission: number;
-  hasPendingLab: boolean;
+  doctorCommission: number; // Mapeado para valor_final_dra
+  hasPendingLab: boolean; // Calculado via JSONB
+  notes?: string; // Mapeado para observacoes
 }

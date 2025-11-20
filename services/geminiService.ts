@@ -1,4 +1,4 @@
-import { GoogleGenAI, Chat, GenerateContentStreamResult } from "@google/genai";
+import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { SYSTEM_INSTRUCTION, MODEL_NAME } from "../constants";
 
 let client: GoogleGenAI | null = null;
@@ -10,8 +10,10 @@ const getClient = (): GoogleGenAI => {
     const apiKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : '';
     
     if (!apiKey) {
-      console.warn("API Key is missing. Chat features will not work.");
-      // We allow it to fail gracefully later rather than crashing app load
+      console.error("❌ ERRO CRÍTICO: A API Key do Gemini NÃO foi detectada. O chat não funcionará.");
+      console.info("Dica: Se não tens um ficheiro .env, verifica as definições do teu editor ou injeta a chave manualmente.");
+    } else {
+      console.log("✅ Sucesso: API Key do Gemini detectada e configurada.");
     }
     
     client = new GoogleGenAI({ apiKey: apiKey || 'dummy_key' });
@@ -37,7 +39,7 @@ export const initializeChat = async (): Promise<void> => {
 
 export const sendMessageStream = async (
   message: string
-): Promise<GenerateContentStreamResult> => {
+): Promise<AsyncIterable<GenerateContentResponse>> => {
   if (!chatInstance) {
     await initializeChat();
   }

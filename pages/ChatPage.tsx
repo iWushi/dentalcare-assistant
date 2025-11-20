@@ -28,6 +28,7 @@ const ChatPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [chatInitialized, setChatInitialized] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -65,41 +66,60 @@ const ChatPage: React.FC = () => {
   // Speech Recognition Setup
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        setSpeechSupported(true);
         const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
-        recognitionRef.current.interimResults = false;
-        recognitionRef.current.lang = 'pt-PT';
+        try {
+          const recognition = new SpeechRecognition();
+          recognition.continuous = false;
+          recognition.interimResults = false;
+          recognition.lang = 'pt-PT';
 
-        recognitionRef.current.onresult = (event: any) => {
-            const transcript = event.results[0][0].transcript;
-            setInputValue(prev => prev ? `${prev} ${transcript}` : transcript);
-            setIsListening(false);
-        };
+          recognition.onresult = (event: any) => {
+              const transcript = event.results[0][0].transcript;
+              setInputValue(prev => prev ? `${prev} ${transcript}` : transcript);
+              setIsListening(false);
+          };
 
-        recognitionRef.current.onerror = (event: any) => {
-            console.error('Speech recognition error', event.error);
-            setIsListening(false);
-        };
-        
-        recognitionRef.current.onend = () => {
-            setIsListening(false);
-        };
+          recognition.onerror = (event: any) => {
+              console.error('Speech recognition error', event.error);
+              setIsListening(false);
+              if (event.error === 'not-allowed') {
+                  alert("Por favor permita o acesso ao microfone para usar o ditado.");
+              }
+          };
+          
+          recognition.onend = () => {
+              setIsListening(false);
+          };
+          
+          recognitionRef.current = recognition;
+
+        } catch (e) {
+          console.error("Speech API blocked or failed initialization", e);
+          setSpeechSupported(false);
+        }
+    } else {
+      setSpeechSupported(false);
     }
   }, []);
 
   const toggleListening = () => {
-    if (!recognitionRef.current) {
-        alert("O teu navegador não suporta ditado por voz.");
+    if (!speechSupported || !recognitionRef.current) {
+        alert("O ditado por voz não está disponível neste navegador.");
         return;
     }
 
-    if (isListening) {
-        recognitionRef.current.stop();
-        setIsListening(false);
-    } else {
-        setIsListening(true);
-        recognitionRef.current.start();
+    try {
+      if (isListening) {
+          recognitionRef.current.stop();
+          setIsListening(false);
+      } else {
+          setIsListening(true);
+          recognitionRef.current.start();
+      }
+    } catch (e) {
+      console.error("Failed to start/stop speech", e);
+      setIsListening(false);
     }
   };
 
@@ -200,12 +220,12 @@ const ChatPage: React.FC = () => {
              <Link to="/" className="lg:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg active:scale-95 transition-transform">
                <ArrowLeft size={22} />
             </Link>
-            <div className="bg-teal-600 p-2 rounded-lg shadow-sm">
+            <div className="bg-teal-500 p-2 rounded-lg shadow-sm">
               <Sparkles className="text-white w-4 h-4" />
             </div>
             <div>
-              <h1 className="font-semibold text-slate-800 text-base leading-tight">Assistente</h1>
-              <p className="text-[10px] text-slate-500">Online</p>
+              <h1 className="font-semibold text-slate-800 text-base leading-tight">Assistente AI</h1>
+              <p className="text-[10px] text-teal-600 font-medium">Online • Dra. Shamila</p>
             </div>
           </div>
         </header>
@@ -222,7 +242,7 @@ const ChatPage: React.FC = () => {
                     <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center">
                       <Loader2 className="w-4 h-4 text-white animate-spin" />
                     </div>
-                    <div className="text-xs text-gray-400 animate-pulse">Calculando...</div>
+                    <div className="text-xs text-gray-400 animate-pulse">Pensando...</div>
                  </div>
               </div>
             )}
@@ -241,8 +261,11 @@ const ChatPage: React.FC = () => {
                 className={`p-3 rounded-2xl transition-all active:scale-90 flex-shrink-0 ${
                     isListening 
                     ? 'bg-red-100 text-red-600 animate-pulse' 
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    : !speechSupported 
+                        ? 'bg-gray-50 text-gray-300 opacity-50 cursor-not-allowed'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}
+                title={!speechSupported ? "Microfone não suportado" : "Falar"}
             >
                 {isListening ? <MicOff size={20} /> : <Mic size={20} />}
             </button>

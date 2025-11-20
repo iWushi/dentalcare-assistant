@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { HashRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
 import { DataProvider } from './context/DataContext';
@@ -11,6 +12,7 @@ import Reports from './pages/Reports';
 import Patients from './pages/Patients';
 import PatientDetails from './pages/PatientDetails';
 import NewConsultation from './pages/NewConsultation';
+import Consultations from './pages/Consultations';
 import Login from './pages/Login';
 
 const Layout = () => (
@@ -51,6 +53,7 @@ const App: React.FC = () => {
               <Route path="patients" element={<Patients />} />
               <Route path="patients/:id" element={<PatientDetails />} />
               <Route path="new-consultation" element={<NewConsultation />} />
+              <Route path="consultations" element={<Consultations />} />
             </Route>
           </Routes>
         </HashRouter>

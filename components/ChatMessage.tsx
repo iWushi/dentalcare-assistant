@@ -1,6 +1,7 @@
+
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
-import { User, Bot, AlertCircle } from 'lucide-react';
+import { User, Sparkles, AlertCircle, Bot } from 'lucide-react';
 import { Message, Role } from '../types';
 
 interface ChatMessageProps {
@@ -16,9 +17,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
         
         {/* Avatar */}
         <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-          isUser ? 'bg-blue-600 text-white' : 'bg-teal-600 text-white'
+          isUser ? 'bg-blue-600 text-white' : 'bg-teal-500 text-white'
         } shadow-md`}>
-          {isUser ? <User size={20} /> : <Bot size={20} />}
+          {isUser ? <User size={20} /> : <Bot size={22} />}
         </div>
 
         {/* Message Bubble */}

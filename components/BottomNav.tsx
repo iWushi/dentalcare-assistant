@@ -1,13 +1,14 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, MessageSquare, BarChart2, Users } from 'lucide-react';
+import { Home, Sparkles, BarChart2, Users } from 'lucide-react';
 
 const BottomNav: React.FC = () => {
+  // Reordered items: Home -> Chat -> Patients -> Reports
   const navItems = [
     { path: '/', icon: <Home size={24} />, label: 'Início' },
-    { path: '/chat', icon: <MessageSquare size={24} />, label: 'Chat' },
-    { path: '/reports', icon: <BarChart2 size={24} />, label: 'Rel.' },
+    { path: '/chat', icon: <Sparkles size={24} />, label: 'AI Chat' },
     { path: '/patients', icon: <Users size={24} />, label: 'Pac.' },
+    { path: '/reports', icon: <BarChart2 size={24} />, label: 'Rel.' },
   ];
 
   return (

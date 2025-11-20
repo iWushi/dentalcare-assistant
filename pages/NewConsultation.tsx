@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { ArrowLeft, Plus, Trash2, Search, Save, UserPlus, Calendar, X, ChevronDown } from 'lucide-react';
-import { PROCEDURE_CATEGORIES, CLINICS } from '../constants';
+import { ArrowLeft, Plus, Trash2, Search, Save, UserPlus, X, ChevronDown, Ban, FlaskConical } from 'lucide-react';
+import { CLINICS } from '../constants';
 import { Procedure, Consultation, Clinic } from '../types';
 
 // Helper for local date string YYYY-MM-DD
@@ -14,45 +14,14 @@ const getTodayStr = () => {
   return `${year}-${month}-${day}`;
 };
 
-// Função manual para forçar espaço como separador de milhar (PT-PT/MZ standard visual)
+// New Standard Formatter "000 000,00 MT"
 const formatMoney = (val: number) => {
   return val.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' MT';
 };
 
-// Flatten categories for easy search
-const ALL_PROCEDURES = PROCEDURE_CATEGORIES.flatMap(cat => {
-  const codes: {code: string, name: string, value: number}[] = [];
-  
-  // Populate sample codes based on category
-  if (cat.code === 'A') {
-      codes.push({code: 'A2', name: 'Consulta Programada', value: 2000});
-      codes.push({code: 'A3', name: 'Consulta Controle', value: 1500});
-      codes.push({code: 'A9', name: 'Domicílio', value: 5250});
-  } else if (cat.code === 'B') {
-      codes.push({code: 'B1', name: 'Trat. hemorragia bucal', value: 2000});
-  } else if (cat.code === 'C') {
-      codes.push({code: 'C1', name: 'Radiografia Periapical', value: 550});
-  } else if (cat.code === 'D') {
-      codes.push({code: 'D1', name: 'Destartarização Profilaxia', value: 2700});
-  } else if (cat.code === 'F') {
-      codes.push({code: 'F2', name: 'Endo Incisivo/Canino', value: 5200});
-  } else if (cat.code === 'G') {
-      codes.push({code: 'G15', name: 'Facetas resina', value: 7500});
-  } else if (cat.code === 'I') {
-      codes.push({code: 'I1', name: 'Extração uniradicular', value: 2800});
-  } else if (cat.code === 'J') {
-      codes.push({code: 'J-PA1', name: 'Prótese acrílica 1d', value: 14800});
-      codes.push({code: 'J-MA', name: 'Moldes Alginato', value: 3250});
-      codes.push({code: 'J-GB', name: 'Goteira bruxismo', value: 10500});
-  } else if (cat.code === 'K') {
-      codes.push({code: 'K1', name: 'Controle Aparelho', value: 3750});
-  }
-  
-  return codes.map(p => ({...p, category: cat.code, commission: cat.commission}));
-});
-
 const NewConsultation: React.FC = () => {
-  const { patients, addConsultation, addPatient, consultations } = useData();
+  const { patients, addConsultation, addPatient, consultations, availableProcedures } = useData();
+  const navigate = useNavigate();
   
   // --- Refs for Focus Management ---
   const procedureInputRef = useRef<HTMLInputElement>(null);
@@ -71,15 +40,18 @@ const NewConsultation: React.FC = () => {
   // --- UI State ---
   const [showPatientModal, setShowPatientModal] = useState(false);
   const [newPatientName, setNewPatientName] = useState('');
-  const [newPatientPhone, setNewPatientPhone] = useState('');
+  const [newPatientPhone, setNewPatientPhone] = useState('+258 ');
   const [submissionSuccess, setSubmissionSuccess] = useState<{id: string, value: number} | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- Calculations ---
+  // --- NEW CALCULATION FORMULA ---
+  // ((Valor Total - Custo Laboratório) ÷ 1.05) × 0.40
   const calculateCommission = (proc: Procedure) => {
-    const commissionRate = proc.code.startsWith('K') ? 0.65 : 0.40;
-    const baseValue = proc.value - (proc.labCost || 0);
-    const valueWithoutIva = baseValue / 1.05;
-    return valueWithoutIva * commissionRate;
+    const total = proc.value || 0;
+    const lab = proc.labCost || 0;
+    const base = Math.max(0, total - lab); // Ensure no negative base
+    const valueWithoutIva = base / 1.05;
+    return valueWithoutIva * 0.40; // Fixed 40%
   };
 
   const totals = useMemo(() => {
@@ -108,50 +80,84 @@ const NewConsultation: React.FC = () => {
         .map(([code]) => code)
         .slice(0, 5);
 
+    if (sortedCodes.length === 0) {
+       return availableProcedures.filter(p => ['A2', 'D1', 'C1'].includes(p.id)).map(p => ({
+         code: p.id,
+         name: p.descricao,
+         value: p.valor_com_iva
+       }));
+    }
+
     return sortedCodes
-        .map(code => ALL_PROCEDURES.find(p => p.code === code))
-        .filter((p): p is typeof ALL_PROCEDURES[0] => !!p);
-  }, [consultations]);
+        .map(code => availableProcedures.find(p => p.id === code))
+        .filter(p => !!p)
+        .map(p => ({
+           code: p!.id,
+           name: p!.descricao,
+           value: p!.valor_com_iva
+        }));
+  }, [consultations, availableProcedures]);
 
   // --- Handlers ---
 
   const handlePatientSelect = (patient: {id: string, name: string}) => {
     setSelectedPatient(patient);
     setPatientInput(patient.name);
-    // Move focus to procedure input for smooth mobile workflow
     setTimeout(() => procedureInputRef.current?.focus(), 100);
   };
 
-  const handleCreatePatient = () => {
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value;
+    if (val.length < 4 && !val.startsWith('+258')) {
+        setNewPatientPhone('+258 ');
+        return;
+    }
+    const rawInput = val.replace(/[^\d+]/g, '');
+    let digits = rawInput.replace(/^\+258/, '');
+    let formatted = '+258 ';
+    if (digits.length > 0) formatted += digits.substring(0, 2);
+    if (digits.length > 2) formatted += ' ' + digits.substring(2, 5);
+    if (digits.length > 5) formatted += ' ' + digits.substring(5, 9);
+    setNewPatientPhone(formatted);
+  };
+
+  const handleCreatePatient = async () => {
     if (!newPatientName) return;
-    const newP = {
-      id: `p-${Date.now()}`,
-      name: newPatientName,
-      phone: newPatientPhone,
-      notes: '',
-      createdAt: new Date()
-    };
-    addPatient(newP);
-    setSelectedPatient(newP);
-    setPatientInput(newP.name);
+    const tempId = `temp-${Date.now()}`;
+    setSelectedPatient({ id: tempId, name: newPatientName });
+    setPatientInput(newPatientName);
     setShowPatientModal(false);
+
+    const created = await addPatient({
+      name: newPatientName,
+      phone: newPatientPhone.trim(),
+      notes: ''
+    });
+
+    if (created) {
+      setSelectedPatient({ id: created.id, name: created.name });
+    }
+
     setNewPatientName('');
-    setNewPatientPhone('');
-    // Move focus to procedure input
+    setNewPatientPhone('+258 ');
     setTimeout(() => procedureInputRef.current?.focus(), 100);
   };
 
-  const handleAddProcedure = (procTemplate: any) => {
+  // Add from Autocomplete
+  const handleAddProcedure = (dbPrice: any) => {
+    const code = dbPrice.id || dbPrice.code;
+    // Auto-activate Lab Toggle for 'J' codes
+    const isJ = code.trim().toUpperCase().startsWith('J');
+
     const newProc: Procedure = {
-      code: procTemplate.code,
-      name: procTemplate.name,
-      value: procTemplate.value,
+      code: code,
+      name: dbPrice.descricao || dbPrice.name,
+      value: dbPrice.valor_com_iva || dbPrice.value,
       labCost: 0,
-      isLabPending: false
+      isLabPending: isJ // Default true for J, but cost is 0 initially
     };
     setSelectedProcedures([...selectedProcedures, newProc]);
     setProcedureInput('');
-    // Keep focus to allow adding multiple procedures rapidly
     setTimeout(() => procedureInputRef.current?.focus(), 50);
   };
 
@@ -174,7 +180,6 @@ const NewConsultation: React.FC = () => {
     setSelectedProcedures(newProcs);
   };
 
-  // Allow pressing Enter on empty procedure input to jump to notes
   const handleProcedureKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !procedureInput && selectedProcedures.length > 0) {
         e.preventDefault();
@@ -182,33 +187,29 @@ const NewConsultation: React.FC = () => {
     }
   };
 
-  const handleSubmit = () => {
-    if (!selectedPatient || selectedProcedures.length === 0) return;
+  const handleSubmit = async () => {
+    if (!selectedPatient || selectedProcedures.length === 0 || isSubmitting) return;
+    setIsSubmitting(true);
 
-    // Generate Timestamp: AAAA-MM-DD HH:MM
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hour = String(now.getHours()).padStart(2, '0');
-    const minute = String(now.getMinutes()).padStart(2, '0');
-    const timestamp = `${year}-${month}-${day} ${hour}:${minute}`;
+    // Check if there are actually pending labs (Toggle ON but Cost is 0/Empty)
+    const pendingLabs = selectedProcedures.some(p => p.isLabPending && (!p.labCost || p.labCost === 0));
 
     const newConsultation: Consultation = {
-      id: `2025-${Math.floor(Math.random() * 10000)}`,
+      id: `2025-${Math.floor(Math.random() * 100000)}`,
       date,
-      createdAt: timestamp, // Guardar hora exacta
       clinic,
       patientId: selectedPatient.id,
       patientName: selectedPatient.name,
       procedures: selectedProcedures,
       totalValue: totals.totalGross,
       doctorCommission: totals.totalCommission,
-      hasPendingLab: selectedProcedures.some(p => p.isLabPending && (p.labCost === 0 || p.labCost === undefined))
+      hasPendingLab: pendingLabs, 
+      notes: notes
     };
 
-    addConsultation(newConsultation);
+    await addConsultation(newConsultation);
     setSubmissionSuccess({ id: newConsultation.id, value: newConsultation.doctorCommission });
+    setIsSubmitting(false);
   };
 
   const handleReset = () => {
@@ -221,19 +222,17 @@ const NewConsultation: React.FC = () => {
     setSubmissionSuccess(null);
   };
 
-  // --- Autocomplete Lists ---
   const patientSuggestions = patientInput.length > 0 && !selectedPatient
     ? patients.filter(p => p.name.toLowerCase().includes(patientInput.toLowerCase()))
     : [];
 
   const procedureSuggestions = procedureInput.length > 0 
-    ? ALL_PROCEDURES.filter(p => 
-        p.code.toLowerCase().includes(procedureInput.toLowerCase()) || 
-        p.name.toLowerCase().includes(procedureInput.toLowerCase())
+    ? availableProcedures.filter(p => 
+        p.id.toLowerCase().includes(procedureInput.toLowerCase()) || 
+        p.descricao.toLowerCase().includes(procedureInput.toLowerCase())
       )
     : [];
 
-  // --- Render Success State ---
   if (submissionSuccess) {
     return (
       <div className="min-h-screen bg-teal-600 flex items-center justify-center p-6 pb-safe">
@@ -242,7 +241,7 @@ const NewConsultation: React.FC = () => {
             <Save className="text-teal-600 w-10 h-10" />
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">Consulta Registada!</h2>
-          <p className="text-slate-500 mb-6">Os dados foram guardados com sucesso.</p>
+          <p className="text-slate-500 mb-6">Dados guardados na base de dados.</p>
           
           <div className="bg-gray-50 rounded-xl p-4 mb-8 border border-gray-100">
             <div className="flex justify-between mb-2">
@@ -250,7 +249,7 @@ const NewConsultation: React.FC = () => {
               <span className="font-mono font-bold text-slate-700">#{submissionSuccess.id}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Tua Comissão</span>
+              <span className="text-gray-500">Comissão Dra.</span>
               <span className="font-bold text-teal-600">{formatMoney(submissionSuccess.value)}</span>
             </div>
           </div>
@@ -266,7 +265,7 @@ const NewConsultation: React.FC = () => {
               to="/"
               className="w-full bg-white text-slate-600 font-bold py-3.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors block min-h-[50px] flex items-center justify-center"
             >
-              Ver Dashboard
+              Dashboard
             </Link>
           </div>
         </div>
@@ -274,10 +273,9 @@ const NewConsultation: React.FC = () => {
     );
   }
 
-  // --- Render Form ---
   return (
-    <div className="pb-48 bg-gray-50 min-h-screen">
-      {/* Header - Sticky with Blur */}
+    <div className="pb-40 bg-gray-50 min-h-screen">
+      {/* Header */}
       <header className="bg-white/90 backdrop-blur-md border-b border-gray-200 sticky top-0 z-20 px-4 py-3 flex items-center gap-3 pt-safe">
         <Link to="/" className="p-2 -ml-2 rounded-full hover:bg-gray-100 text-gray-600 active:scale-95 transition-transform">
           <ArrowLeft size={24} />
@@ -287,19 +285,17 @@ const NewConsultation: React.FC = () => {
 
       <div className="p-4 max-w-xl mx-auto space-y-6">
         
-        {/* 1. Basic Info - Vertical Stack for Mobile */}
+        {/* 1. Basic Info */}
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
            <div className="flex flex-col gap-4">
              <div>
                <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Data</label>
-               <div className="relative">
-                 <input 
+               <input 
                    type="date"
                    value={date}
                    onChange={(e) => setDate(e.target.value)}
                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none appearance-none"
                  />
-               </div>
              </div>
              <div>
                <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Clínica</label>
@@ -348,7 +344,6 @@ const NewConsultation: React.FC = () => {
                        setTimeout(() => patientInputRef.current?.focus(), 100);
                      }}
                      className="p-3 text-teal-600 hover:bg-teal-100 rounded-xl active:scale-90 transition-transform"
-                     aria-label="Remover paciente"
                    >
                      <X size={20} />
                    </button>
@@ -365,7 +360,6 @@ const NewConsultation: React.FC = () => {
                    />
                    <Search className="absolute left-3.5 top-4 text-gray-400 w-5 h-5" />
                    
-                   {/* Suggestions */}
                    {patientSuggestions.length > 0 && (
                      <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-10 max-h-64 overflow-y-auto">
                         {patientSuggestions.map(p => (
@@ -389,7 +383,6 @@ const NewConsultation: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
            <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">Procedimentos</label>
            
-           {/* Add Input */}
            <div className="relative mb-2">
               <input
                 ref={procedureInputRef}
@@ -397,34 +390,32 @@ const NewConsultation: React.FC = () => {
                 value={procedureInput}
                 onChange={(e) => setProcedureInput(e.target.value)}
                 onKeyDown={handleProcedureKeyDown}
-                placeholder="Código ou nome (ex: A2)"
+                placeholder="Código ou descrição (ex: A2)"
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-base focus:ring-2 focus:ring-teal-500 focus:outline-none placeholder:text-gray-400"
               />
               <Plus className="absolute left-3.5 top-4 text-gray-400 w-5 h-5" />
               
-              {/* Suggestions */}
               {procedureSuggestions.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-10 max-h-64 overflow-y-auto">
-                   {procedureSuggestions.map((p, idx) => (
+                   {procedureSuggestions.map((p) => (
                      <button
-                       key={`${p.code}-${idx}`}
+                       key={p.id}
                        onClick={() => handleAddProcedure(p)}
                        className="w-full text-left px-5 py-4 hover:bg-gray-50 border-b border-gray-50 last:border-0 flex justify-between items-center active:bg-gray-100 transition-colors"
                      >
                        <div>
-                         <span className="font-bold text-teal-600 mr-2 text-base">{p.code}</span>
-                         <span className="text-slate-700 text-base">{p.name}</span>
+                         <span className="font-bold text-teal-600 mr-2 text-base">{p.id}</span>
+                         <span className="text-slate-700 text-base">{p.descricao}</span>
                        </div>
-                       <div className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">{formatMoney(p.value)}</div>
+                       <div className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">{formatMoney(p.valor_com_iva)}</div>
                      </button>
                    ))}
                 </div>
               )}
            </div>
 
-           {/* Top Used Codes (Dynamic List) */}
            {topProcedures.length > 0 && (
-             <div className="flex flex-wrap gap-2 mb-4 animate-in fade-in slide-in-from-top-2">
+             <div className="flex flex-wrap gap-2 mb-4 animate-in fade-in">
                {topProcedures.map(proc => (
                  <button
                    key={proc.code}
@@ -437,10 +428,9 @@ const NewConsultation: React.FC = () => {
              </div>
            )}
 
-           {/* List */}
            <div className="space-y-3">
               {selectedProcedures.map((proc, idx) => (
-                <div key={idx} className="bg-gray-50 rounded-xl p-4 border border-gray-100 relative animate-in slide-in-from-left-2 duration-200">
+                <div key={idx} className="bg-gray-50 rounded-xl p-4 border border-gray-100 relative transition-all">
                    <div className="flex justify-between items-start pr-8">
                       <div>
                         <span className="text-xs font-bold bg-white border border-gray-200 px-1.5 py-0.5 rounded text-slate-500 mr-2">
@@ -452,36 +442,47 @@ const NewConsultation: React.FC = () => {
                       <button 
                         onClick={() => handleRemoveProcedure(idx)} 
                         className="absolute -right-1 -top-1 p-4 text-gray-300 hover:text-red-500 transition-colors active:scale-90"
-                        aria-label="Remover procedimento"
                       >
                         <Trash2 size={20} />
                       </button>
                    </div>
                    
-                   {/* Lab Toggle - Larger Hit Area */}
-                   <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-3">
-                      <label className="flex items-center gap-3 text-sm text-gray-600 cursor-pointer py-1 select-none">
-                        <input 
-                          type="checkbox" 
-                          checked={proc.isLabPending}
-                          onChange={(e) => updateProcedureLab(idx, e.target.checked)}
-                          className="w-5 h-5 rounded text-teal-600 focus:ring-teal-500 border-gray-300" 
-                        />
-                        Requer Laboratório
-                      </label>
-                      
+                   <div className="mt-4 pt-3 border-t border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-3 text-sm text-gray-700 font-medium cursor-pointer select-none">
+                            <div className={`w-10 h-6 rounded-full transition-colors relative ${proc.isLabPending ? 'bg-teal-600' : 'bg-gray-300'}`}>
+                                <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${proc.isLabPending ? 'translate-x-4' : ''}`}></div>
+                            </div>
+                            <input 
+                                type="checkbox" 
+                                checked={proc.isLabPending || false}
+                                onChange={(e) => updateProcedureLab(idx, e.target.checked)}
+                                className="hidden" 
+                            />
+                            <div className="flex flex-col">
+                                <span>Adicionar custo de laboratório</span>
+                                <span className="text-[10px] text-gray-400 font-normal">Abate na comissão</span>
+                            </div>
+                        </label>
+                      </div>
+
+                      {/* Conditional Input Field for Lab Cost */}
                       {proc.isLabPending && (
-                        <div className="flex items-center gap-2 ml-auto">
-                          <span className="text-xs text-gray-400">Custo:</span>
-                          <input 
-                            type="tel" 
-                            inputMode="numeric"
-                            placeholder="0"
-                            value={proc.labCost || ''}
-                            onChange={(e) => updateProcedureLabCost(idx, e.target.value)}
-                            className="w-24 bg-white border border-gray-300 rounded-lg px-3 py-2 text-base text-right focus:border-teal-500 outline-none"
-                          />
-                          <span className="text-xs text-gray-400">MT</span>
+                        <div className="mt-3 animate-in slide-in-from-top-2">
+                            <div className="flex items-center gap-2 bg-white border border-teal-200 rounded-lg px-3 py-2 shadow-sm">
+                                <FlaskConical size={16} className="text-teal-500" />
+                                <input 
+                                    type="number"
+                                    placeholder="0"
+                                    value={proc.labCost || ''}
+                                    onChange={(e) => updateProcedureLabCost(idx, e.target.value)}
+                                    className="flex-1 outline-none text-slate-800 font-bold placeholder:font-normal"
+                                />
+                                <span className="text-xs font-bold text-gray-400">MT</span>
+                            </div>
+                            {(!proc.labCost || proc.labCost === 0) && (
+                                <p className="text-[10px] text-amber-500 mt-1 pl-1">⚠️ Pendente: Insira o valor do custo.</p>
+                            )}
                         </div>
                       )}
                    </div>
@@ -498,12 +499,13 @@ const NewConsultation: React.FC = () => {
 
         {/* 4. Summary & Notes */}
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-           <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">Notas (Opcional)</label>
+           <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">Observações</label>
            <textarea
              ref={notesInputRef}
              value={notes}
              onChange={(e) => setNotes(e.target.value)}
              rows={2}
+             placeholder="Notas clínicas..."
              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-base focus:ring-2 focus:ring-teal-500 focus:outline-none mb-4"
            />
 
@@ -512,29 +514,38 @@ const NewConsultation: React.FC = () => {
                  <span className="text-gray-500">Valor Bruto</span>
                  <span className="font-medium text-slate-700">{formatMoney(totals.totalGross)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                 <span className="text-gray-500">IVA (5%)</span>
-                 <span className="text-gray-400">Incluso</span>
-              </div>
               <div className="flex justify-between items-center pt-2">
-                 <span className="font-bold text-slate-800">Tua Comissão Estimada</span>
+                 <span className="font-bold text-slate-800">Comissão (40%)</span>
                  <span className="text-2xl font-bold text-teal-600">{formatMoney(totals.totalCommission)}</span>
               </div>
+              <p className="text-[10px] text-gray-400 text-right">
+                *Após dedução de custos lab e IVA (5%)
+              </p>
            </div>
         </div>
-
       </div>
 
-      {/* Fixed Bottom Button (iPhone optimized) */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 pb-safe bg-white/95 backdrop-blur-md border-t border-gray-200 z-50 shadow-[0_-4px_15px_rgba(0,0,0,0.05)]">
-        <div className="max-w-xl mx-auto">
-            <button
-            onClick={handleSubmit}
-            disabled={!selectedPatient || selectedProcedures.length === 0}
-            className="w-full bg-slate-800 text-white font-bold py-4 rounded-2xl shadow-lg shadow-slate-800/20 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+      {/* BARRA FIXA DE ACÇÕES */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-safe z-[60] shadow-[0_-5px_20px_rgba(0,0,0,0.08)]">
+        <div className="max-w-xl mx-auto flex gap-3">
+           <button
+              onClick={() => navigate(-1)}
+              className="flex-1 bg-gray-50 text-slate-600 font-bold py-4 rounded-2xl border border-gray-200 hover:bg-gray-100 hover:text-red-600 transition-colors flex items-center justify-center gap-2 active:scale-98"
             >
-            <Save size={22} />
-            Registar Consulta
+              <Ban size={20} />
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!selectedPatient || selectedProcedures.length === 0 || isSubmitting}
+              className="flex-[2] bg-teal-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-teal-600/20 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 active:scale-98"
+            >
+            {isSubmitting ? 'A guardar...' : (
+                <>
+                    <Save size={22} />
+                    Registar Consulta
+                </>
+            )}
             </button>
         </div>
       </div>
@@ -543,7 +554,13 @@ const NewConsultation: React.FC = () => {
       {showPatientModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
-              <h3 className="font-bold text-xl text-slate-800 mb-6">Novo Paciente</h3>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-xl text-slate-800">Novo Paciente</h3>
+                <button onClick={() => setShowPatientModal(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
+                    <X size={20} />
+                </button>
+              </div>
+              
               <div className="space-y-4 mb-6">
                  <div>
                    <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Nome Completo</label>
@@ -552,17 +569,17 @@ const NewConsultation: React.FC = () => {
                      type="text"
                      value={newPatientName}
                      onChange={(e) => setNewPatientName(e.target.value)}
-                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base"
+                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base focus:ring-2 focus:ring-teal-500 outline-none"
                    />
                  </div>
                  <div>
-                   <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Telefone</label>
+                   <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Telefone (Moçambique)</label>
                    <input 
                      type="tel"
                      inputMode="tel"
                      value={newPatientPhone}
-                     onChange={(e) => setNewPatientPhone(e.target.value)}
-                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base"
+                     onChange={handlePhoneChange}
+                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base font-mono focus:ring-2 focus:ring-teal-500 outline-none"
                    />
                  </div>
               </div>
