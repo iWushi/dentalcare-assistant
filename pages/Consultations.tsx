@@ -1,25 +1,34 @@
-
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { Search, Calendar, Edit2, Trash2, X, Save, Filter, FlaskConical, Plus } from 'lucide-react';
 import { CLINICS } from '../constants';
 import { Clinic, Consultation, Procedure, DbPrice } from '../types';
+import { useLocation } from 'react-router-dom';
 
 const Consultations: React.FC = () => {
   const { consultations, updateConsultation, deleteConsultation, availableProcedures } = useData();
   
-  // --- Filters State ---
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterMonth, setFilterMonth] = useState<string>(String(new Date().getMonth() + 1));
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const initialSearchId = searchParams.get('search');
+
+  const [searchTerm, setSearchTerm] = useState(initialSearchId || '');
+  const [filterMonth, setFilterMonth] = useState<string>(initialSearchId ? 'all' : String(new Date().getMonth() + 1));
   const [filterYear, setFilterYear] = useState<string>(String(new Date().getFullYear()));
 
-  // --- Editing State ---
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(initialSearchId || null);
   const [editForm, setEditForm] = useState<Partial<Consultation>>({});
-  const [procSearchTerm, setProcSearchTerm] = useState(''); // Search inside edit
+  const [procSearchTerm, setProcSearchTerm] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // --- Helpers ---
+  // Auto-edit if coming from Reports link
+  React.useEffect(() => {
+      if (initialSearchId) {
+          const target = consultations.find(c => c.id === initialSearchId);
+          if (target) handleEdit(target);
+      }
+  }, [initialSearchId, consultations]);
+
   const formatMoney = (val: number) => {
     return (val || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   };
@@ -32,7 +41,6 @@ const Consultations: React.FC = () => {
     { value: '10', label: 'Out' }, { value: '11', label: 'Nov' }, { value: '12', label: 'Dez' }
   ];
 
-  // --- Filter Logic ---
   const filteredConsultations = useMemo(() => {
     return consultations.filter(c => {
       const matchesSearch = 
@@ -45,18 +53,15 @@ const Consultations: React.FC = () => {
          const parts = c.date.split('-');
          if (parts.length === 3) {
             const year = parts[0];
-            const month = parseInt(parts[1]).toString(); // remove zero padding logic
-            
+            const month = parseInt(parts[1]).toString(); 
             if (year !== filterYear) return false;
             if (month !== filterMonth) return false;
          }
       }
-
       return true;
     });
   }, [consultations, searchTerm, filterMonth, filterYear]);
 
-  // --- Search Logic for Procedures (Inside Edit) ---
   const procedureSuggestions = useMemo(() => {
     if (!procSearchTerm) return [];
     const lower = procSearchTerm.toLowerCase();
@@ -66,28 +71,29 @@ const Consultations: React.FC = () => {
     );
   }, [procSearchTerm, availableProcedures]);
 
-  // --- Calculation Helper ---
+  // Calculate new commission: ((Total - Lab) / 1.05) * 0.40
   const calculateTotals = (procedures: Procedure[]) => {
-    let total = 0;
-    let comm = 0;
+    let totalGross = 0;
+    let totalLab = 0;
+    
     procedures.forEach(p => {
-        const val = p.value || 0;
-        const lab = p.labCost || 0;
-        total += val;
-        
-        // Formula: ((Total - Lab) / 1.05) * 0.40
-        const base = Math.max(0, val - lab);
-        comm += (base / 1.05) * 0.40;
+        totalGross += (p.value || 0);
+        totalLab += (p.labCost || 0);
     });
-    return { total, comm };
+    
+    const base = Math.max(0, totalGross - totalLab);
+    const comm = (base / 1.05) * 0.40;
+
+    return { totalGross, comm, totalLab };
   };
 
-  // --- Handlers ---
   const handleEdit = (c: Consultation) => {
     setEditingId(c.id);
     setProcSearchTerm('');
-    // Deep copy procedures
+    
+    // Deep copy procedures to avoid mutating context state directly
     const proceduresCopy = c.procedures.map(p => ({...p}));
+    
     setEditForm({
        date: c.date,
        clinic: c.clinic,
@@ -101,22 +107,24 @@ const Consultations: React.FC = () => {
   const handleAddProcedure = (dbProc: DbPrice) => {
      if (!editForm.procedures) return;
      
-     const isJ = dbProc.id.toUpperCase().startsWith('J');
+     // Only 'J' codes default to True for Lab
+     const isLabProc = dbProc.id.toUpperCase().startsWith('J');
+
      const newProc: Procedure = {
         code: dbProc.id,
         name: dbProc.descricao,
         value: dbProc.valor_com_iva,
-        isLabPending: isJ,
+        isLabPending: isLabProc,
         labCost: 0
      };
 
      const newProcs = [...editForm.procedures, newProc];
-     const { total, comm } = calculateTotals(newProcs);
+     const { totalGross, comm } = calculateTotals(newProcs);
 
      setEditForm(prev => ({
         ...prev,
         procedures: newProcs,
-        totalValue: total,
+        totalValue: totalGross,
         doctorCommission: comm
      }));
      setProcSearchTerm('');
@@ -127,11 +135,11 @@ const Consultations: React.FC = () => {
      const newProcs = [...editForm.procedures];
      newProcs.splice(index, 1);
      
-     const { total, comm } = calculateTotals(newProcs);
+     const { totalGross, comm } = calculateTotals(newProcs);
      setEditForm(prev => ({
         ...prev,
         procedures: newProcs,
-        totalValue: total,
+        totalValue: totalGross,
         doctorCommission: comm
      }));
   };
@@ -141,12 +149,12 @@ const Consultations: React.FC = () => {
       const newProcs = [...editForm.procedures];
       newProcs[idx] = updatedProc;
 
-      const { total, comm } = calculateTotals(newProcs);
+      const { totalGross, comm } = calculateTotals(newProcs);
 
       setEditForm(prev => ({
           ...prev,
           procedures: newProcs,
-          totalValue: total,
+          totalValue: totalGross,
           doctorCommission: comm
       }));
   };
@@ -155,11 +163,8 @@ const Consultations: React.FC = () => {
     if (!editingId || !editForm) return;
     setIsSaving(true);
     try {
-       const hasPending = editForm.procedures?.some(p => p.isLabPending && (!p.labCost || p.labCost === 0));
-       
        await updateConsultation(editingId, {
-           ...editForm,
-           hasPendingLab: hasPending
+           ...editForm
        });
        setEditingId(null);
     } catch (e) {
@@ -176,7 +181,7 @@ const Consultations: React.FC = () => {
   };
 
   return (
-    <div className="pb-32 p-4 max-w-4xl mx-auto min-h-screen bg-gray-50">
+    <div className="pb-40 p-4 max-w-4xl mx-auto min-h-screen bg-gray-50">
        <header className="mb-6">
           <h1 className="text-2xl font-bold text-slate-800">Gestão de Consultas</h1>
           <p className="text-sm text-gray-500">Editar, apagar e corrigir registos</p>
@@ -227,7 +232,7 @@ const Consultations: React.FC = () => {
                 <div key={cons.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-visible transition-all hover:shadow-md">
                    {editingId === cons.id ? (
                       // --- EDIT MODE ---
-                      <div className="p-4 bg-teal-50/30 border-2 border-teal-500 rounded-xl">
+                      <div className="p-4 bg-teal-50/30 border-2 border-teal-500 rounded-xl animate-in fade-in">
                          <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-teal-800 flex items-center gap-2">
                                <Edit2 size={16} /> Editando #{cons.id}
@@ -242,7 +247,7 @@ const Consultations: React.FC = () => {
                                  type="date" 
                                  value={editForm.date || ''} 
                                  onChange={e => setEditForm({...editForm, date: e.target.value})}
-                                 className="w-full p-2 border rounded-lg mt-1"
+                                 className="w-full p-2 border rounded-lg mt-1 bg-white"
                                />
                             </div>
                             <div>
@@ -250,7 +255,7 @@ const Consultations: React.FC = () => {
                                <select 
                                  value={editForm.clinic} 
                                  onChange={e => setEditForm({...editForm, clinic: e.target.value as Clinic})}
-                                 className="w-full p-2 border rounded-lg mt-1"
+                                 className="w-full p-2 border rounded-lg mt-1 bg-white"
                                >
                                   <option value={CLINICS.SOMMERSCHIELD}>Sommerschield</option>
                                   <option value={CLINICS.BAIXA}>Baixa</option>
@@ -272,7 +277,6 @@ const Consultations: React.FC = () => {
                                 <Plus size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-teal-500" />
                             </div>
                             
-                            {/* Sugestões Dropdown */}
                             {procedureSuggestions.length > 0 && (
                                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto">
                                    {procedureSuggestions.map(p => (
@@ -311,13 +315,12 @@ const Consultations: React.FC = () => {
                                     <div className="flex gap-2 items-end">
                                         <div className="flex-1">
                                             <label className="text-[10px] text-gray-400">Valor</label>
-                                            {/* Read-Only Value Display */}
                                             <div className="w-full p-1.5 bg-gray-50 border border-transparent rounded text-sm font-bold text-slate-600 cursor-not-allowed">
                                                 {formatMoney(proc.value)} MT
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2 bg-gray-50 p-1 rounded border border-gray-200">
-                                             <label className="text-[10px] text-gray-500 flex items-center gap-1 cursor-pointer select-none">
+                                             <label className="text-[10px] text-gray-500 flex items-center gap-1 cursor-pointer select-none px-1">
                                                 <input 
                                                     type="checkbox"
                                                     checked={proc.isLabPending || false}
@@ -326,8 +329,9 @@ const Consultations: React.FC = () => {
                                                         isLabPending: e.target.checked,
                                                         labCost: e.target.checked ? (proc.labCost || 0) : 0
                                                     })}
+                                                    className="w-4 h-4 text-teal-600 rounded"
                                                 />
-                                                Lab?
+                                                Tem Lab?
                                              </label>
                                              {proc.isLabPending && (
                                                  <div className="flex items-center">
@@ -336,9 +340,9 @@ const Consultations: React.FC = () => {
                                                         placeholder="0"
                                                         value={proc.labCost || ''}
                                                         onChange={(e) => updateProcedureInEdit(idx, {...proc, labCost: Number(e.target.value)})}
-                                                        className="w-20 p-1 text-right text-sm border rounded-l outline-none font-bold text-slate-700"
+                                                        className="w-24 p-1 text-right text-sm border rounded-l outline-none font-bold text-slate-700 bg-white"
                                                      />
-                                                     <span className="bg-gray-100 border border-l-0 rounded-r px-1 text-[10px] text-gray-500 h-[26px] flex items-center">MT</span>
+                                                     <span className="bg-gray-100 border border-l-0 rounded-r px-1 text-[10px] text-gray-500 h-[30px] flex items-center border-l">MT</span>
                                                  </div>
                                              )}
                                         </div>
@@ -349,7 +353,7 @@ const Consultations: React.FC = () => {
                          
                          <div className="flex justify-between items-center bg-white p-3 rounded-lg border border-teal-100 mb-4">
                             <div>
-                               <div className="text-xs text-gray-500">Valor Total</div>
+                               <div className="text-xs text-gray-500">Valor Bruto</div>
                                <div className="font-bold">{formatMoney(editForm.totalValue || 0)} MT</div>
                             </div>
                             <div className="text-right">
@@ -363,7 +367,7 @@ const Consultations: React.FC = () => {
                             <button 
                               onClick={handleSave} 
                               disabled={isSaving}
-                              className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-teal-700"
+                              className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-teal-700 shadow-sm"
                             >
                                <Save size={16} /> {isSaving ? 'A guardar...' : 'Guardar Alterações'}
                             </button>
@@ -385,12 +389,17 @@ const Consultations: React.FC = () => {
                                {cons.procedures.map((p, idx) => (
                                    <span key={idx} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 rounded text-[10px] text-gray-600">
                                        {p.code}
-                                       {p.isLabPending && (
-                                           <FlaskConical size={8} className={(!p.labCost || p.labCost === 0) ? "text-red-500" : "text-teal-500"} />
+                                       {(p.isLabPending) && (
+                                           <FlaskConical size={8} className={p.labCost > 0 ? "text-teal-500" : "text-amber-500"} />
                                        )}
                                    </span>
                                ))}
                             </div>
+                            {cons.hasPendingLab && (
+                                <div className="mt-2 text-xs font-bold text-amber-500 flex items-center gap-1 animate-pulse bg-amber-50 px-2 py-1 rounded-md w-max border border-amber-100">
+                                    <FlaskConical size={12} /> Lab Pendente: Custo em falta!
+                                </div>
+                            )}
                          </div>
                          
                          <div className="flex items-center gap-6 w-full md:w-auto justify-between">

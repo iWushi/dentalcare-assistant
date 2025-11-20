@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Patient, Consultation, DbPrice, Procedure } from '../types';
 import { supabase } from '../services/supabase';
@@ -26,23 +25,17 @@ const parseCurrency = (value: any): number => {
   if (typeof value === 'number') return value;
   if (!value) return 0;
   
-  // Converte para string e limpa espaços não quebráveis e normais
   let str = String(value).trim().replace(/\s/g, '').replace(/\u00A0/g, '');
   
-  // Se for formato PT/MZ "1.500,00" ou "1 500,00"
   if (str.includes(',') && str.includes('.')) {
-    // Assumindo que o ultimo separador é o decimal se for vírgula
     if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
         str = str.replace(/\./g, '').replace(',', '.');
     }
   } else if (str.includes(',')) {
-    // Se for formato "1500,00"
     str = str.replace(',', '.');
   }
   
-  // Remove tudo que não for número, ponto ou menos
   const cleanStr = str.replace(/[^0-9.-]/g, '');
-  
   const parsed = parseFloat(cleanStr);
   return isNaN(parsed) ? 0 : parsed;
 };
@@ -56,25 +49,18 @@ const normalizeDate = (dateStr: any): string => {
        isoStr = dateStr.toISOString().split('T')[0];
        return isoStr;
     } 
-    
     if (typeof dateStr === 'string') {
        let cleanDate = dateStr.trim();
-       
-       // Formato Excel/CSV DD/MM/YYYY ou DD-MM-YYYY
        if (cleanDate.includes('/')) {
           const parts = cleanDate.split('/');
           if (parts.length === 3) {
-             // Assumindo DD/MM/YYYY
              const d = parts[0].padStart(2, '0');
              const m = parts[1].padStart(2, '0');
              const y = parts[2];
-             // Se o ano for 2 digitos (ex: 25), assumir 2025
              const fullYear = y.length === 2 ? `20${y}` : y;
              return `${fullYear}-${m}-${d}`;
           }
        }
-
-       // Formato YYYY-MM-DD
        const parts = cleanDate.split('T')[0].split('-');
        if (parts.length === 3) {
           const y = parts[0];
@@ -82,7 +68,6 @@ const normalizeDate = (dateStr: any): string => {
           const d = parts[2].padStart(2, '0');
           return `${y}-${m}-${d}`;
        }
-       
        return cleanDate.split('T')[0];
     }
     return '';
@@ -92,119 +77,6 @@ const normalizeDate = (dateStr: any): string => {
   }
 };
 
-// Helper Crítico: Parse Robust de Procedimentos
-// Lida com: Array de Strings, Array de Objectos, String JSON, String Suja
-const parseProceduresRobust = (raw: any, totalValue: number, codeToNameMap: Map<string, string>): Procedure[] => {
-  let items: any[] = [];
-
-  try {
-    // 1. Normalizar entrada para array
-    if (Array.isArray(raw)) {
-      items = raw;
-    } else if (typeof raw === 'string') {
-      const trimmed = raw.trim();
-      
-      if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-         try {
-           const parsed = JSON.parse(trimmed);
-           items = Array.isArray(parsed) ? parsed : [parsed];
-         } catch {
-           // JSON parse falhou (string malformada ou cortada).
-           // Tentar extrair códigos via Regex (pinça cirúrgica)
-           // Procura padrões como "code":"A1" ou code:'A1' ou code: A1
-           const regex = /["']?code["']?\s*:\s*["']?([^"'},\]\s]+)["']?/gi;
-           let match;
-           const extracted = [];
-           while ((match = regex.exec(trimmed)) !== null) {
-               if (match[1] && match[1].length < 10) {
-                   extracted.push({ code: match[1], name: 'Recuperado' });
-               }
-           }
-           
-           if (extracted.length > 0) {
-               items = extracted;
-           } else if (!trimmed.includes(':') && !trimmed.includes('{')) {
-               // Se não tem cara de JSON, assume separado por vírgula
-               items = trimmed.split(',');
-           } else {
-               // É lixo JSON irrecuperável
-               items = []; 
-           }
-         }
-      } else {
-         items = trimmed.split(',');
-      }
-    } else if (raw) {
-      items = [raw];
-    }
-  } catch (e) {
-    console.error("Erro crítico a normalizar procedimentos", e);
-    items = [];
-  }
-
-  // 2. Mapear cada item para a estrutura Procedure
-  return items.map((item, index) => {
-      if (!item) return null;
-
-      // Caso A: Objecto
-      if (typeof item === 'object' && item !== null) {
-          let code = item.code || item.id;
-          
-          // Validação rígida: Se o código for um objecto ou muito longo, é lixo
-          if (!code || typeof code !== 'string' || code.length > 15 || code.includes('{') || code.includes('[')) {
-              return null; 
-          }
-
-          const name = item.name || item.descricao || codeToNameMap.get(String(code).toUpperCase()) || String(code);
-          
-          return {
-             code: String(code),
-             name: String(name),
-             value: Number(item.value) || (index === 0 ? totalValue : 0),
-             labCost: Number(item.labCost) || 0,
-             isLabPending: !!item.isLabPending
-          };
-      }
-
-      // Caso B: String
-      if (typeof item === 'string') {
-          let cleanStr = item.trim();
-
-          // Se a string começar por { ou [, é um JSON stringificado que sobreviveu
-          if (cleanStr.startsWith('{') || cleanStr.startsWith('[')) {
-              // Tentar regex na string individual
-              const match = cleanStr.match(/["']?code["']?\s*:\s*["']?([^"'},\]\s]+)["']?/i);
-              if (match && match[1] && match[1].length < 10) {
-                  const c = match[1].toUpperCase();
-                  const n = codeToNameMap.get(c) || c;
-                  return { code: c, name: n, value: 0, labCost: 0, isLabPending: false };
-              }
-              return null; // Lixo
-          }
-
-          // Limpeza final de aspas e brackets
-          cleanStr = cleanStr.replace(/['"\[\]]/g, ''); 
-          
-          // Se ainda tiver caracteres de JSON ou for muito longa, ignorar
-          if (cleanStr.length > 15 || cleanStr.includes(':') || cleanStr.includes('{')) return null;
-
-          const code = cleanStr.toUpperCase();
-          const description = codeToNameMap.get(code) || cleanStr;
-
-          return {
-              code: code,
-              name: description,
-              value: index === 0 ? totalValue : 0, // Legado assume valor total no primeiro
-              labCost: 0,
-              isLabPending: false
-          };
-      }
-
-      return null;
-  }).filter(Boolean) as Procedure[];
-};
-
-
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
@@ -212,34 +84,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // --- Fetch Data from Supabase ---
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // 1. Fetch Preços
+        // 1. Fetch Prices
         const { data: pricesData, error: pricesError } = await supabase
           .from('precos')
           .select('*')
           .eq('ativo', true)
           .order('id');
-
         if (pricesError) throw pricesError;
         
-        // Criar mapa de códigos
-        const codeToNameMap = new Map<string, string>();
+        // Map for fast lookup
+        const pricesMap = new Map<string, DbPrice>();
         pricesData?.forEach((p: any) => {
-            if(p.id) codeToNameMap.set(p.id.trim().toUpperCase(), p.descricao);
+            if(p.id) pricesMap.set(p.id.trim().toUpperCase(), p);
         });
-
         setAvailableProcedures(pricesData || []);
 
-        // 2. Fetch Pacientes
+        // 2. Fetch Patients
         const { data: patientsData, error: patientsError } = await supabase
           .from('pacientes')
           .select('*')
           .order('nome');
-
         if (patientsError) throw patientsError;
 
         const formattedPatients: Patient[] = (patientsData || []).map((p: any) => ({
@@ -250,7 +118,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date(p.criado_em)
         }));
 
-        // 3. Fetch Consultas
+        // 3. Fetch Consultations
         const { data: consultationsData, error: consultationsError } = await supabase
           .from('consultas')
           .select('*')
@@ -262,18 +130,76 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const safeTotalValue = parseCurrency(c.valor_total);
           const safeDoctorCommission = parseCurrency(c.valor_final_dra);
           const safeDate = normalizeDate(c.data);
+          const safeLabCost = parseCurrency(c.custo_lab); // Coluna custo_lab
 
-          // Parse Robusto dos Procedimentos
-          const proceduresList = parseProceduresRobust(
-              c.procedimentos, 
-              safeTotalValue, 
-              codeToNameMap
-          );
+          // Parse JSONB Procedures
+          let rawProcs = c.procedimentos;
+          let parsedProcs: any[] = [];
 
-          // Check pending based on object flags
-          const hasPendingLab = Array.isArray(proceduresList) 
-            ? proceduresList.some(p => p.isLabPending && (!p.labCost || p.labCost === 0))
-            : false;
+          if (Array.isArray(rawProcs)) {
+             parsedProcs = rawProcs;
+          } else if (typeof rawProcs === 'string') {
+             try {
+                // Tenta parsear se for JSON string ou trata como CSV antigo
+                if (rawProcs.trim().startsWith('[')) {
+                   parsedProcs = JSON.parse(rawProcs);
+                } else {
+                   // Legacy CSV string
+                   parsedProcs = rawProcs.split(',').map(s => ({ codigo: s.trim() }));
+                }
+             } catch {
+                parsedProcs = rawProcs.split(',').map(s => ({ codigo: s.trim() }));
+             }
+          }
+
+          // Rehydrate Procedures List
+          const proceduresList: Procedure[] = parsedProcs.map((p: any) => {
+             // Suporte híbrido: p pode ser string ou objecto
+             const code = typeof p === 'string' ? p : (p.codigo || p.code || '');
+             const cleanCode = String(code).trim().toUpperCase();
+             
+             // Se o objecto JSONB tem 'tem_lab', usamos isso.
+             let hasLab = false;
+             if (typeof p === 'object' && p !== null && 'tem_lab' in p) {
+                 hasLab = p.tem_lab;
+             } else {
+                 // Fallback legado ou nova inserção
+                 hasLab = cleanCode.startsWith('J');
+             }
+
+             if (!cleanCode) return null;
+             
+             const priceInfo = pricesMap.get(cleanCode);
+             const name = priceInfo ? priceInfo.descricao : (p.descricao || cleanCode);
+             // Preço: Preferir o histórico guardado no JSON se existir, senão tabela actual
+             const value = (typeof p === 'object' && p.valor) ? p.valor : (priceInfo ? priceInfo.valor_com_iva : 0);
+
+             return {
+                 code: cleanCode,
+                 name: name,
+                 value: value,
+                 labCost: 0, // Visual placeholder, o custo real está na coluna da consulta
+                 isLabPending: hasLab
+             };
+          }).filter(Boolean) as Procedure[];
+
+          // Calcular estado de Pendência (Lógica Pedida)
+          // Pendência se: Existe algum procedimento com 'tem_lab' = true E 'custo_lab' da consulta é 0 ou NULL
+          const hasItemsWithLab = proceduresList.some(p => p.isLabPending);
+          const isPending = hasItemsWithLab && (safeLabCost === 0 || !c.custo_lab);
+
+          // Se tiver custo de laboratório e itens de laboratório, distribuímos visualmente para a UI
+          // Apenas para UX, para o utilizador ver onde está o custo quando editar
+          if (safeLabCost > 0) {
+              const labItems = proceduresList.filter(p => p.isLabPending);
+              if (labItems.length > 0) {
+                  // Atribuir tudo ao primeiro item de Lab encontrado para simplificar edição
+                  labItems[0].labCost = safeLabCost;
+              } else if (proceduresList.length > 0) {
+                  // Fallback
+                  proceduresList[0].labCost = safeLabCost;
+              }
+          }
 
           return {
             id: c.id,
@@ -285,7 +211,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             procedures: proceduresList,
             totalValue: safeTotalValue,
             doctorCommission: safeDoctorCommission,
-            hasPendingLab: hasPendingLab,
+            hasPendingLab: isPending,
             notes: c.observacoes
           };
         });
@@ -311,12 +237,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addConsultation = async (consultation: Consultation) => {
     try {
-      // Calculate total lab cost to store in numeric column
+      // 1. Calcular Custo Lab Total a partir da UI
       const totalLabCost = consultation.procedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
       
-      // Re-calculate to be safe for DB consistency
-      const totalVal = consultation.totalValue;
-      const valorSemIva = (totalVal - totalLabCost) / 1.05; 
+      // 2. Preparar JSONB array: [{ codigo, descricao, tem_lab }]
+      const procedimentosJson = consultation.procedures.map(p => ({
+          codigo: p.code,
+          descricao: p.name,
+          tem_lab: p.isLabPending || false,
+          valor: p.value // Guardar histórico de preço
+      }));
+      
+      // 3. Calcular Valores Finais
+      // FÓRMULA: ((Total - Lab) / 1.05) * 0.40
+      const baseCalc = Math.max(0, consultation.totalValue - totalLabCost);
+      const valorSemIva = baseCalc / 1.05;
+      const valorFinalDra = valorSemIva * 0.40;
 
       const dbPayload = {
         id: consultation.id,
@@ -324,11 +260,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clinica: consultation.clinic,
         paciente_id: consultation.patientId,
         paciente_nome: consultation.patientName,
-        procedimentos: consultation.procedures, // Save objects to JSONB
-        valor_total: totalVal,
-        custo_lab: totalLabCost, // New Column
+        procedimentos: procedimentosJson, // JSONB
+        valor_total: consultation.totalValue,
+        custo_lab: totalLabCost, // Coluna numérica
         valor_sem_iva: valorSemIva,
-        valor_final_dra: consultation.doctorCommission,
+        valor_final_dra: valorFinalDra,
         observacoes: consultation.notes || '',
         criado_em: new Date().toISOString()
       };
@@ -338,7 +274,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .insert([dbPayload]);
 
       if (error) throw error;
-      setConsultations(prev => [consultation, ...prev]);
+      
+      // Atualizar estado local com os valores calculados
+      const newConsLocal = { ...consultation, doctorCommission: valorFinalDra, hasPendingLab: (totalLabCost === 0 && consultation.procedures.some(p => p.isLabPending)) };
+      setConsultations(prev => [newConsLocal, ...prev]);
       
     } catch (err: any) {
       console.error('Error adding consultation:', err);
@@ -351,32 +290,38 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const dbUpdates: any = {};
       
-      // Helper to get current consultation state to merge procedures if needed
+      // Recuperar estado actual para merge
       const current = consultations.find(c => c.id === id);
-      
+      if (!current) throw new Error("Consulta não encontrada localmente");
+
+      const mergedProcedures = updates.procedures || current.procedures;
+      const mergedTotalValue = updates.totalValue !== undefined ? updates.totalValue : current.totalValue;
+
+      // Se houver alterações que afectam valores
+      if (updates.procedures || updates.totalValue !== undefined) {
+          // Recalcular tudo
+          const totalLabCost = mergedProcedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
+          const baseCalc = Math.max(0, mergedTotalValue - totalLabCost);
+          const valorSemIva = baseCalc / 1.05;
+          const valorFinalDra = valorSemIva * 0.40;
+
+          dbUpdates.valor_total = mergedTotalValue;
+          dbUpdates.custo_lab = totalLabCost;
+          dbUpdates.valor_sem_iva = valorSemIva;
+          dbUpdates.valor_final_dra = valorFinalDra;
+
+          // Preparar JSONB
+          dbUpdates.procedimentos = mergedProcedures.map(p => ({
+             codigo: p.code,
+             descricao: p.name,
+             tem_lab: p.isLabPending || false,
+             valor: p.value
+          }));
+      }
+
       if (updates.date) dbUpdates.data = updates.date;
       if (updates.clinic) dbUpdates.clinica = updates.clinic;
       if (updates.patientName) dbUpdates.paciente_nome = updates.patientName;
-      if (updates.patientId) dbUpdates.paciente_id = updates.patientId;
-      
-      if (updates.procedures) {
-          dbUpdates.procedimentos = updates.procedures;
-          // Recalculate lab cost sum
-          const totalLabCost = updates.procedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
-          dbUpdates.custo_lab = totalLabCost;
-      }
-
-      if (updates.totalValue !== undefined) {
-          dbUpdates.valor_total = updates.totalValue;
-          // We need totalLabCost to calculate sem_iva correctly
-          const totalLabCost = updates.procedures 
-             ? updates.procedures.reduce((sum, p) => sum + (p.labCost || 0), 0) 
-             : (current?.procedures || []).reduce((sum, p) => sum + (p.labCost || 0), 0);
-             
-          dbUpdates.valor_sem_iva = (updates.totalValue - totalLabCost) / 1.05;
-      }
-
-      if (updates.doctorCommission !== undefined) dbUpdates.valor_final_dra = updates.doctorCommission;
       if (updates.notes !== undefined) dbUpdates.observacoes = updates.notes;
 
       const { error } = await supabase
@@ -385,7 +330,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', id);
 
       if (error) throw error;
-      setConsultations(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+      
+      // Atualizar UI localmente
+      setConsultations(prev => prev.map(c => {
+          if (c.id !== id) return c;
+          
+          // Merge updates
+          let updated = { ...c, ...updates };
+          
+          // Garantir que valores calculados reflectem o que foi para a BD
+          if (dbUpdates.valor_final_dra !== undefined) {
+              updated.doctorCommission = dbUpdates.valor_final_dra;
+              // Check pendency
+              const labCost = dbUpdates.custo_lab;
+              const hasLabItems = (updates.procedures || c.procedures).some(p => p.isLabPending);
+              updated.hasPendingLab = hasLabItems && (labCost === 0);
+          }
+          return updated;
+      }));
 
     } catch (err: any) {
        console.error('Error updating consultation:', err);
@@ -467,7 +429,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const targetPatient = patients.find(p => p.id === targetId);
       if (!targetPatient) throw new Error("Paciente destino não encontrado");
 
-      // 1. Actualizar todas as consultas do source para o target
       const { error: updateError } = await supabase
         .from('consultas')
         .update({ 
@@ -478,10 +439,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (updateError) throw updateError;
 
-      // 2. Apagar o paciente antigo
       await deletePatient(sourceId);
 
-      // 3. Actualizar estado local (consultas)
       setConsultations(prev => prev.map(c => 
          c.patientId === sourceId 
            ? { ...c, patientId: targetId, patientName: targetPatient.name }

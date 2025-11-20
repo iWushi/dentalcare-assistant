@@ -1,12 +1,11 @@
-
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, Legend
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, PieChart, Pie
 } from 'recharts';
 import { 
-  TrendingUp, TrendingDown, AlertCircle, ChevronRight, 
-  Building2, Map as MapIcon, Calendar, Target, Download, Info, FlaskConical
+  TrendingUp, TrendingDown, Download, ChevronRight, 
+  Building2, Map as MapIcon, Calendar, Target, FlaskConical, Info
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OBJETIVO_MENSAL, CLINICS, PROCEDURE_CATEGORIES } from '../constants';
@@ -26,16 +25,17 @@ const MONTHS = [
   { value: '12', label: 'Dezembro' }
 ];
 
-const YEARS = ['2025', '2024', '2026', '2027'];
+const YEARS = ['2024', '2025', '2026'];
 
 const Reports: React.FC = () => {
-  const { consultations } = useData();
+  const { consultations, availableProcedures } = useData();
   
   // --- State de Filtros ---
   const [filterType, setFilterType] = useState<'month' | 'range'>('month');
   
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
+  const todayStr = new Date().toISOString().split('T')[0];
   
   const [selMonth, setSelMonth] = useState(String(currentMonth));
   const [selYear, setSelYear] = useState(String(currentYear));
@@ -46,7 +46,6 @@ const Reports: React.FC = () => {
   });
 
   // --- Helpers ---
-  // Standard Format: 000 000,00 MT
   const formatMoney = (val: number) => {
      return (val || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' MT';
   };
@@ -62,7 +61,6 @@ const Reports: React.FC = () => {
   const isWithinPeriod = (dateStr: string) => {
     if (!dateStr) return false;
     
-    // A data vem sempre YYYY-MM-DD do normalizeDate
     const parts = dateStr.split('-'); 
     if (parts.length < 3) return false;
     
@@ -96,7 +94,7 @@ const Reports: React.FC = () => {
     const totalCommission = filtered.reduce((sum, c) => sum + (Number(c.doctorCommission) || 0), 0);
     const percentGoal = OBJETIVO_MENSAL > 0 ? Math.min(100, Math.round((totalCommission / OBJETIVO_MENSAL) * 100)) : 0;
     
-    // --- Variação ---
+    // --- Variação Mensal ---
     let variation = 0;
     let isPositive = true;
 
@@ -135,73 +133,67 @@ const Reports: React.FC = () => {
        }
     }
 
-    // Clínicas
+    // Clínicas (usando valor_final_dra)
     const sommerschield = filtered.filter(c => c.clinic === CLINICS.SOMMERSCHIELD);
     const baixa = filtered.filter(c => c.clinic === CLINICS.BAIXA);
     const commSomm = sommerschield.reduce((sum, c) => sum + (Number(c.doctorCommission) || 0), 0);
     const commBaixa = baixa.reduce((sum, c) => sum + (Number(c.doctorCommission) || 0), 0);
 
-    // Pendências (Geral - Não apenas do periodo)
-    const pendingLabs = safeConsultations.filter(c => 
-        c.procedures && c.procedures.some(p => p.isLabPending && (!p.labCost || p.labCost === 0))
-    );
+    // Pendências Lab (apenas futuras/hoje e que tenham itens de lab)
+    // Regra: custo_lab NULL/0 && tem_lab = true && data >= hoje
+    const pendingLabs = safeConsultations.filter(c => {
+        if (c.date < todayStr) return false;
+        return c.hasPendingLab; // Esta flag já é calculada no DataContext com base em procedimentos e custo
+    });
 
-    // Top 5 com cores das Categorias
+    // Top 5 Categorias (baseado em Preços.categoria)
     const catMap: Record<string, { value: number, count: number, color: string }> = {};
     
-    filtered.forEach(c => {
-      if (c.procedures && Array.isArray(c.procedures)) {
-        c.procedures.forEach(p => {
-            // PROTECÇÃO AGRESSIVA: 
-            // Se o código for inválido, JSON, ou muito longo, ignora.
-            if (!p || !p.code || typeof p.code !== 'string') return;
-            if (p.code.length > 10 || p.code.includes('{') || p.code.includes('[') || p.code.includes(':')) return;
-            
-            // New Formula for Reports too: ((Val - Lab) / 1.05) * 0.40
-            const procValue = Number(p.value) || 0;
-            const procLab = Number(p.labCost) || 0;
-            const base = Math.max(0, procValue - procLab);
-            const procComm = (base / 1.05) * 0.40;
-            
-            // Tentar determinar a Categoria
-            let catName = 'Geral';
-            let catColor = '#14B8A6'; // Default Teal
+    // Mapa rápido de Código -> Categoria (usando availableProcedures do DataContext)
+    const codeToCatMap = new Map<string, string>();
+    availableProcedures.forEach(price => {
+        if (price.id) codeToCatMap.set(price.id, price.categoria || 'Geral');
+    });
 
-            const firstLetter = p.code.charAt(0).toUpperCase();
-            const matchedCat = PROCEDURE_CATEGORIES.find(cat => cat.code === firstLetter);
-            if (matchedCat) {
-                catName = matchedCat.name;
-                catColor = matchedCat.color;
-            }
-            
-            if (!catMap[catName]) {
-                catMap[catName] = { value: 0, count: 0, color: catColor };
-            }
-            catMap[catName].value += procComm;
-            catMap[catName].count += 1;
-        });
-      }
+    filtered.forEach(c => {
+       const totalValue = c.procedures.reduce((sum, p) => sum + (p.value || 0), 0);
+       if (totalValue === 0) return;
+
+       c.procedures.forEach(p => {
+           if (!p.code) return;
+           
+           // Tenta encontrar categoria pelo código completo
+           let catName = codeToCatMap.get(p.code);
+           
+           // Se não encontrar, tenta inferir pela primeira letra (Legacy fallback)
+           if (!catName) {
+               const firstLetter = p.code.charAt(0).toUpperCase();
+               const matchedCat = PROCEDURE_CATEGORIES.find(cat => cat.code === firstLetter);
+               catName = matchedCat ? matchedCat.name : 'Outros';
+           }
+
+           // Se a categoria vier da BD (ex: "Dentística"), vamos tentar mapear cor
+           // Se não, usamos default
+           let catColor = '#94a3b8';
+           const knownCat = PROCEDURE_CATEGORIES.find(cat => cat.name.toLowerCase() === catName?.toLowerCase() || cat.code === p.code.charAt(0));
+           if (knownCat) catColor = knownCat.color;
+
+           // Proporção da comissão da Dra para este procedimento
+           const weight = (p.value || 0) / totalValue;
+           const procCommission = (c.doctorCommission || 0) * weight;
+
+           if (!catMap[catName || 'Outros']) {
+               catMap[catName || 'Outros'] = { value: 0, count: 0, color: catColor };
+           }
+           catMap[catName || 'Outros'].value += procCommission;
+           catMap[catName || 'Outros'].count += 1;
+       });
     });
 
     const top5 = Object.entries(catMap)
       .map(([name, data]) => ({ name, value: data.value, count: data.count, color: data.color }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-      
-    // Daily Trend Data for Chart
-    const dailyDataMap: Record<string, number> = {};
-    filtered.forEach(c => {
-       if (!c.date) return;
-       const day = c.date.split('-')[2]; // DD
-       dailyDataMap[day] = (dailyDataMap[day] || 0) + (c.doctorCommission || 0);
-    });
-    
-    const chartData = Object.keys(dailyDataMap)
-       .sort((a,b) => parseInt(a) - parseInt(b))
-       .map(day => ({
-          day: `${day}/${selMonth}`,
-          value: dailyDataMap[day]
-       }));
 
     return {
       filtered,
@@ -213,20 +205,58 @@ const Reports: React.FC = () => {
       countBaixa: baixa.length,
       pendingLabs,
       top5,
-      chartData,
       variation,
       isPositive
     };
-  }, [consultations, filterType, selMonth, selYear, dateRange]);
+  }, [consultations, filterType, selMonth, selYear, dateRange, todayStr, availableProcedures]);
 
-  // --- Data for Comparison Chart (Year vs Last Year) ---
+  // --- Patients Stats (Novos vs Recorrentes) ---
+  const patientStats = useMemo(() => {
+      const targetYear = parseInt(selYear);
+      let newCount = 0;
+      let recurringCount = 0;
+      
+      // Set of Patient IDs who visited in selected year
+      const yearConsultations = consultations.filter(c => {
+          const y = parseInt(c.date.split('-')[0]);
+          return y === targetYear;
+      });
+      const visitorsThisYear = new Set(yearConsultations.map(c => c.patientId));
+
+      visitorsThisYear.forEach(pid => {
+          // Find history of this patient sorted by date
+          const patientHistory = consultations
+             .filter(c => c.patientId === pid)
+             .sort((a,b) => a.date.localeCompare(b.date));
+          
+          if (patientHistory.length === 0) return;
+
+          const firstVisitDate = patientHistory[0].date;
+          const firstVisitYear = parseInt(firstVisitDate.split('-')[0]);
+
+          // Novos: Primeira vez que aparece é neste ano
+          if (firstVisitYear === targetYear) {
+              newCount++;
+          } else {
+              // Recorrentes: Já apareceu antes deste ano, e voltou este ano
+              recurringCount++;
+          }
+      });
+
+      return [
+          { name: 'Novos', value: newCount, color: '#0d9488' }, // Teal
+          { name: 'Recorrentes', value: recurringCount, color: '#94a3b8' } // Slate
+      ];
+  }, [consultations, selYear]);
+
+
+  // --- Comparison Data (Annual) ---
   const comparisonData = useMemo(() => {
     const curYearInt = parseInt(selYear);
     const prevYearInt = curYearInt - 1;
     
-    // Initialize 12 months data structure
     const data = MONTHS.map((m) => ({
-      name: m.label.substring(0, 3), // Jan, Fev...
+      name: m.label.substring(0, 3),
       fullMonth: m.label,
       [prevYearInt]: 0,
       [curYearInt]: 0,
@@ -238,7 +268,7 @@ const Reports: React.FC = () => {
       if (parts.length < 2) return;
       
       const y = parseInt(parts[0]);
-      const m = parseInt(parts[1]) - 1; // 0-based index in array
+      const m = parseInt(parts[1]) - 1; 
       
       if (m < 0 || m > 11) return;
 
@@ -261,11 +291,11 @@ const Reports: React.FC = () => {
     
     let csvContent = "\uFEFF";
     csvContent += `Relatório DentalCare;${periodLabel}\n\n`;
-    csvContent += `Data;Paciente;Clínica;Tratamento;Valor;Comissão\n`;
+    csvContent += `Data;Paciente;Clínica;Tratamento;Valor Bruto;Comissão\n`;
 
     sortedData.forEach((c) => {
       const treatments = c.procedures
-          .map(p => (p.code && p.code.length < 10 && !p.code.includes('{')) ? p.code : '')
+          .map(p => (p.code && p.code.length < 10) ? p.code : '')
           .filter(Boolean)
           .join(' + ');
 
@@ -283,7 +313,6 @@ const Reports: React.FC = () => {
     link.click();
   };
 
-  // Custom Tooltips
   const CustomTooltipTop5 = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -298,32 +327,8 @@ const Reports: React.FC = () => {
     return null;
   };
 
-  const CustomTooltipComparison = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-       const prevYearVal = payload[0].value;
-       const curYearVal = payload[1].value;
-       const prevYearKey = payload[0].dataKey;
-       const curYearKey = payload[1].dataKey;
-
-       return (
-         <div className="bg-white p-3 rounded-xl shadow-lg border border-gray-100 text-xs z-50">
-             <p className="font-bold text-slate-800 mb-2 border-b border-gray-50 pb-1">{payload[0].payload.fullMonth}</p>
-             <div className="flex justify-between gap-4 mb-1">
-                <span className="text-gray-500 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-gray-300"></div> {prevYearKey}:</span>
-                <span className="font-mono">{formatMoney(prevYearVal)}</span>
-             </div>
-             <div className="flex justify-between gap-4">
-                <span className="text-teal-700 flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-teal-600"></div> {curYearKey}:</span>
-                <span className="font-mono font-bold text-teal-700">{formatMoney(curYearVal)}</span>
-             </div>
-         </div>
-       );
-    }
-    return null;
-  };
-
   return (
-    <div className="pb-32 pt-6 px-5 max-w-lg mx-auto space-y-6 bg-gray-50 min-h-screen font-sans">
+    <div className="pb-40 pt-6 px-5 max-w-lg mx-auto space-y-6 bg-gray-50 min-h-screen font-sans">
       
       <div>
         <h1 className="text-xl font-semibold text-slate-800 mb-1">Relatórios</h1>
@@ -406,10 +411,10 @@ const Reports: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI Principal */}
+      {/* 1. CARD TOTAL LÍQUIDO (Updated Title) */}
       <section className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
         <div className="flex justify-between items-start mb-2">
-            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Líquido (Comissão)</span>
+            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Líquido</span>
             <div className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border ${reportData.isPositive ? 'bg-teal-900/50 text-teal-400 border-teal-800/50' : 'bg-red-900/50 text-red-400 border-red-800/50'}`}>
               {reportData.isPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
               {filterType === 'month' ? `${Math.abs(reportData.variation)}%` : '--'}
@@ -431,100 +436,11 @@ const Reports: React.FC = () => {
                 style={{ width: `${reportData.percentGoal}%` }}
               ></div>
             </div>
+            <p className="text-[10px] text-slate-500 mt-1">Passe o rato sobre a barra para ver a regra de comparação.</p>
         </div>
       </section>
 
-      {/* ALERT CARD: Pending Lab Costs */}
-      {reportData.pendingLabs.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 animate-in fade-in">
-           <div className="flex items-center gap-3 mb-2">
-             <div className="bg-amber-100 p-2 rounded-full text-amber-600">
-               <FlaskConical size={20} />
-             </div>
-             <div className="flex-1">
-               <h3 className="text-sm font-bold text-amber-800">Custos de laboratório pendentes</h3>
-               <p className="text-xs text-amber-600">{reportData.pendingLabs.length} consultas precisam de atenção</p>
-             </div>
-             <Link to="/consultations" className="text-xs bg-white text-amber-600 px-3 py-1 rounded-lg border border-amber-200 font-bold">
-               Resolver
-             </Link>
-           </div>
-        </div>
-      )}
-
-      {/* Gráfico de Comparação Anual */}
-      <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-        <div className="flex items-center justify-between mb-6">
-           <h2 className="text-lg font-medium text-slate-800">Comparação Anual</h2>
-           <div className="flex gap-4 text-xs font-bold">
-              <div className="flex items-center gap-1">
-                 <div className="w-3 h-3 rounded-full bg-gray-300"></div>
-                 <span className="text-gray-500">{comparisonData.prevYearInt}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                 <div className="w-3 h-3 rounded-full bg-teal-600"></div>
-                 <span className="text-slate-700">{comparisonData.curYearInt}</span>
-              </div>
-           </div>
-        </div>
-        <div className="h-64 w-full">
-           <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={comparisonData.data} margin={{top: 5, right: 0, left: -20, bottom: 0}}>
-                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                 <XAxis 
-                   dataKey="name" 
-                   axisLine={false} 
-                   tickLine={false} 
-                   tick={{fontSize: 11, fill: '#94a3b8'}} 
-                   dy={10}
-                 />
-                 <YAxis 
-                   axisLine={false} 
-                   tickLine={false} 
-                   tick={{fontSize: 10, fill: '#94a3b8'}} 
-                   tickFormatter={(val) => `${(val/1000).toFixed(0)}k`}
-                 />
-                 <Tooltip content={<CustomTooltipComparison />} cursor={{fill: '#f8fafc'}} />
-                 <Bar dataKey={comparisonData.prevYearInt} fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={12} />
-                 <Bar dataKey={comparisonData.curYearInt} fill="#0d9488" radius={[4, 4, 0, 0]} barSize={12} />
-              </BarChart>
-           </ResponsiveContainer>
-        </div>
-      </section>
-
-      {/* Gráfico de Evolução Diária */}
-      <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-         <h2 className="text-lg font-medium text-slate-800 mb-4">Evolução Diária ({getPeriodLabel()})</h2>
-         <div className="h-48 w-full">
-            {reportData.chartData.length > 0 ? (
-               <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={reportData.chartData}>
-                     <defs>
-                        <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                           <stop offset="5%" stopColor="#0d9488" stopOpacity={0.2}/>
-                           <stop offset="95%" stopColor="#0d9488" stopOpacity={0}/>
-                        </linearGradient>
-                     </defs>
-                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                     <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} minTickGap={20} />
-                     <Tooltip 
-                        contentStyle={{backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px'}}
-                        itemStyle={{color: '#0f172a', fontWeight: 'bold'}}
-                        formatter={(val: number) => [formatMoney(val), 'Comissão']}
-                     />
-                     <Area type="monotone" dataKey="value" stroke="#0d9488" strokeWidth={2} fillOpacity={1} fill="url(#colorVal)" />
-                  </AreaChart>
-               </ResponsiveContainer>
-            ) : (
-               <div className="flex flex-col items-center justify-center h-full text-gray-400 text-xs">
-                  <Info size={24} className="mb-2 opacity-20" />
-                  Sem dados para exibir
-               </div>
-            )}
-         </div>
-      </section>
-
-      {/* Clínicas */}
+      {/* 2. CARD CLÍNICAS */}
       <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
         <h2 className="text-lg font-medium text-slate-800 mb-5">Clínicas</h2>
         <div className="grid grid-cols-2 gap-4 mb-5">
@@ -545,26 +461,66 @@ const Reports: React.FC = () => {
             <div className="text-xs text-gray-400">{reportData.countBaixa} consultas</div>
           </div>
         </div>
+        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden flex">
+             <div className="bg-teal-500 h-full" style={{ width: `${(reportData.commSomm / (reportData.commSomm + reportData.commBaixa || 1)) * 100}%` }}></div>
+             <div className="bg-slate-300 h-full flex-1"></div>
+        </div>
+        <p className="text-[10px] text-gray-400 mt-3 italic">"Onde estou a gerar mais rendimento neste período?"</p>
       </section>
 
-      {/* Gráfico Top 5 */}
+      {/* 3. CARD PENDÊNCIAS LAB (NEW) - Only show if pending labs exist */}
+      {reportData.pendingLabs.length > 0 && (
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5 relative">
+             <div className="absolute top-4 right-4 text-xs font-bold bg-amber-200 text-amber-800 px-2 py-1 rounded-full">
+               {reportData.pendingLabs.length}
+             </div>
+             <div className="flex items-center gap-2 mb-4">
+                 <FlaskConical className="text-amber-500" size={20} />
+                 <h2 className="text-lg font-medium text-amber-900">Pendências Lab</h2>
+             </div>
+             
+             <div className="space-y-3 mb-3">
+                {reportData.pendingLabs.slice(0, 3).map(c => (
+                  <div key={c.id} className="flex justify-between items-center bg-white/60 p-3 rounded-xl">
+                      <div>
+                          <div className="font-bold text-slate-800 text-sm">{c.patientName}</div>
+                          <div className="text-[10px] text-gray-500">#{c.id}</div>
+                      </div>
+                      <div className="text-right">
+                          <div className="text-xs font-bold text-slate-600 mb-1">{formatMoney(c.totalValue)}</div>
+                          <Link 
+                            to={`/consultations?search=${c.id}`} 
+                            className="px-3 py-1 bg-white border border-amber-200 rounded-lg text-[10px] font-bold text-amber-700 hover:bg-amber-50 flex items-center gap-1"
+                          >
+                            Corrigir <ChevronRight size={10}/>
+                          </Link>
+                      </div>
+                  </div>
+                ))}
+             </div>
+             
+             <p className="text-[10px] text-amber-700 italic mt-2">"Corrige estas pendências para garantir que a comissão fica correcta."</p>
+        </div>
+      )}
+
+      {/* 4. CARD TOP 5 CATEGORIAS (Updated) */}
       <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
         <h2 className="text-lg font-medium text-slate-800 mb-6">Top 5 Categorias</h2>
         <div className="h-48 w-full mb-2">
            {reportData.top5.length > 0 ? (
              <ResponsiveContainer width="100%" height="100%">
-                <BarChart layout="vertical" data={reportData.top5} margin={{ left: 0, right: 0, bottom: 0 }}>
+                <BarChart layout="vertical" data={reportData.top5} margin={{ left: 0, right: 20, bottom: 0 }}>
                    <XAxis type="number" hide />
                    <YAxis 
                      dataKey="name" 
                      type="category" 
                      axisLine={false} 
                      tickLine={false} 
-                     width={85}
-                     tick={{fontSize: 11, fill: '#64748b', fontWeight: 600}} 
+                     width={70}
+                     tick={{fontSize: 10, fill: '#64748b', fontWeight: 600}} 
                    />
                    <Tooltip cursor={{fill: 'transparent'}} content={<CustomTooltipTop5 />} />
-                   <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
+                   <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={18}>
                      {reportData.top5.map((entry, index) => (
                        <Cell key={`cell-${index}`} fill={entry.color} />
                      ))}
@@ -574,10 +530,106 @@ const Reports: React.FC = () => {
            ) : (
              <div className="flex flex-col items-center justify-center h-full text-gray-400 text-xs">
                 <Info size={24} className="mb-2 opacity-20" />
-                Sem dados para exibir neste período
+                Sem dados
              </div>
            )}
         </div>
+        <p className="text-[10px] text-gray-400 italic">"Quais os procedimentos que me estão a gerar maior rendimento neste período?"</p>
+      </section>
+
+      {/* 5. CARD COMPARATIVO ANUAL (Updated) */}
+      <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+        <div className="flex items-center justify-between mb-6">
+           <h2 className="text-lg font-medium text-slate-800">Comparativo Anual</h2>
+           <div className="flex gap-4 text-xs font-bold">
+              <div className="flex items-center gap-1">
+                 <div className="w-2 h-2 rounded-full bg-teal-600"></div>
+                 <span className="text-slate-700">{comparisonData.curYearInt}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                 <div className="w-2 h-2 rounded-full bg-gray-300"></div>
+                 <span className="text-gray-400">{comparisonData.prevYearInt}</span>
+              </div>
+           </div>
+        </div>
+        <div className="h-48 w-full">
+           <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={comparisonData.data} margin={{top: 5, right: 0, left: -25, bottom: 0}}>
+                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                 <XAxis 
+                   dataKey="name" 
+                   axisLine={false} 
+                   tickLine={false} 
+                   tick={{fontSize: 10, fill: '#94a3b8'}} 
+                   dy={10}
+                 />
+                 <YAxis 
+                   axisLine={false} 
+                   tickLine={false} 
+                   tick={{fontSize: 9, fill: '#94a3b8'}} 
+                   tickFormatter={(val) => `${(val/1000).toFixed(0)}k`}
+                 />
+                 <Tooltip 
+                    cursor={{fill: '#f8fafc'}} 
+                    contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
+                    formatter={(value: number) => formatMoney(value)}
+                 />
+                 <Bar dataKey={comparisonData.prevYearInt} fill="#cbd5e1" radius={[2, 2, 0, 0]} barSize={8} />
+                 <Bar dataKey={comparisonData.curYearInt} fill="#0d9488" radius={[2, 2, 0, 0]} barSize={8} />
+              </BarChart>
+           </ResponsiveContainer>
+        </div>
+        <p className="text-[10px] text-gray-400 italic mt-4">"Como está este ano comparado com o anterior?"</p>
+      </section>
+
+      {/* 6. CARD PACIENTES (NEW Donut) */}
+      <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+         <div className="flex items-center justify-between mb-4">
+             <h2 className="text-lg font-medium text-slate-800">Pacientes</h2>
+         </div>
+         <div className="flex items-center justify-center gap-8">
+             {/* Donut Chart */}
+             <div className="h-32 w-32 relative">
+                 <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                       <Pie
+                         data={patientStats}
+                         innerRadius={40}
+                         outerRadius={55}
+                         paddingAngle={5}
+                         dataKey="value"
+                         stroke="none"
+                       >
+                         {patientStats.map((entry, index) => (
+                           <Cell key={`cell-${index}`} fill={entry.color} />
+                         ))}
+                       </Pie>
+                    </PieChart>
+                 </ResponsiveContainer>
+                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                     <span className="text-xl font-bold text-slate-800">
+                         {patientStats.reduce((acc, curr) => acc + curr.value, 0)}
+                     </span>
+                     <span className="text-[8px] text-gray-400 uppercase tracking-widest">TOTAL</span>
+                 </div>
+             </div>
+             
+             {/* Legend */}
+             <div className="space-y-3">
+                 {patientStats.map((stat, idx) => (
+                    <div key={idx} className="flex flex-col">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stat.color }}></div>
+                            {stat.name}
+                        </div>
+                        <div className="text-[10px] text-gray-400 ml-4">{stat.value} pacientes</div>
+                    </div>
+                 ))}
+             </div>
+         </div>
+         <p className="mt-6 text-center text-xs text-gray-400 italic">
+             "Estou a atrair novos pacientes ou apenas a acompanhar os habituais?"
+         </p>
       </section>
 
       <div className="h-6"></div>

@@ -14,7 +14,6 @@ const getTodayStr = () => {
   return `${year}-${month}-${day}`;
 };
 
-// New Standard Formatter "000 000,00 MT"
 const formatMoney = (val: number) => {
   return val.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' MT';
 };
@@ -23,7 +22,6 @@ const NewConsultation: React.FC = () => {
   const { patients, addConsultation, addPatient, consultations, availableProcedures } = useData();
   const navigate = useNavigate();
   
-  // --- Refs for Focus Management ---
   const procedureInputRef = useRef<HTMLInputElement>(null);
   const notesInputRef = useRef<HTMLTextAreaElement>(null);
   const patientInputRef = useRef<HTMLInputElement>(null);
@@ -44,26 +42,17 @@ const NewConsultation: React.FC = () => {
   const [submissionSuccess, setSubmissionSuccess] = useState<{id: string, value: number} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- NEW CALCULATION FORMULA ---
-  // ((Valor Total - Custo Laboratório) ÷ 1.05) × 0.40
-  const calculateCommission = (proc: Procedure) => {
-    const total = proc.value || 0;
-    const lab = proc.labCost || 0;
-    const base = Math.max(0, total - lab); // Ensure no negative base
-    const valueWithoutIva = base / 1.05;
-    return valueWithoutIva * 0.40; // Fixed 40%
-  };
-
+  // --- NEW CALCULATION LOGIC ---
+  // Formula: ((Total Gross - Total Lab) / 1.05) * 0.40
   const totals = useMemo(() => {
-    let totalGross = 0;
-    let totalCommission = 0;
+    const totalGross = selectedProcedures.reduce((sum, p) => sum + (p.value || 0), 0);
+    const totalLab = selectedProcedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
     
-    selectedProcedures.forEach(p => {
-      totalGross += p.value;
-      totalCommission += calculateCommission(p);
-    });
+    const baseCalc = Math.max(0, totalGross - totalLab);
+    const valueWithoutIva = baseCalc / 1.05;
+    const totalCommission = valueWithoutIva * 0.40;
 
-    return { totalGross, totalCommission };
+    return { totalGross, totalLab, totalCommission };
   }, [selectedProcedures]);
 
   // --- Top Used Codes Logic ---
@@ -146,15 +135,15 @@ const NewConsultation: React.FC = () => {
   // Add from Autocomplete
   const handleAddProcedure = (dbPrice: any) => {
     const code = dbPrice.id || dbPrice.code;
-    // Auto-activate Lab Toggle for 'J' codes
-    const isJ = code.trim().toUpperCase().startsWith('J');
+    // Auto-activate Lab Toggle ONLY for 'J' codes (Prótese)
+    const isLabCode = code.trim().toUpperCase().startsWith('J');
 
     const newProc: Procedure = {
       code: code,
       name: dbPrice.descricao || dbPrice.name,
       value: dbPrice.valor_com_iva || dbPrice.value,
       labCost: 0,
-      isLabPending: isJ // Default true for J, but cost is 0 initially
+      isLabPending: isLabCode // Starts ON only for J
     };
     setSelectedProcedures([...selectedProcedures, newProc]);
     setProcedureInput('');
@@ -174,9 +163,10 @@ const NewConsultation: React.FC = () => {
     setSelectedProcedures(newProcs);
   };
 
-  const updateProcedureLabCost = (index: number, cost: string) => {
+  const updateProcedureLabCost = (index: number, costStr: string) => {
     const newProcs = [...selectedProcedures];
-    newProcs[index].labCost = Number(cost);
+    const cost = parseFloat(costStr.replace(/[^0-9.]/g, '')) || 0;
+    newProcs[index].labCost = cost;
     setSelectedProcedures(newProcs);
   };
 
@@ -191,11 +181,10 @@ const NewConsultation: React.FC = () => {
     if (!selectedPatient || selectedProcedures.length === 0 || isSubmitting) return;
     setIsSubmitting(true);
 
-    // Check if there are actually pending labs (Toggle ON but Cost is 0/Empty)
-    const pendingLabs = selectedProcedures.some(p => p.isLabPending && (!p.labCost || p.labCost === 0));
+    const tempId = `2025-${Math.floor(Math.random() * 100000)}`;
 
     const newConsultation: Consultation = {
-      id: `2025-${Math.floor(Math.random() * 100000)}`,
+      id: tempId,
       date,
       clinic,
       patientId: selectedPatient.id,
@@ -203,12 +192,12 @@ const NewConsultation: React.FC = () => {
       procedures: selectedProcedures,
       totalValue: totals.totalGross,
       doctorCommission: totals.totalCommission,
-      hasPendingLab: pendingLabs, 
+      hasPendingLab: false, // Calculated by context
       notes: notes
     };
 
     await addConsultation(newConsultation);
-    setSubmissionSuccess({ id: newConsultation.id, value: newConsultation.doctorCommission });
+    setSubmissionSuccess({ id: tempId, value: totals.totalCommission });
     setIsSubmitting(false);
   };
 
@@ -460,28 +449,31 @@ const NewConsultation: React.FC = () => {
                                 className="hidden" 
                             />
                             <div className="flex flex-col">
-                                <span>Adicionar custo de laboratório</span>
-                                <span className="text-[10px] text-gray-400 font-normal">Abate na comissão</span>
+                                <span>Requer Laboratório?</span>
+                                <span className="text-[10px] text-gray-400 font-normal">Marque para indicar custo pendente</span>
                             </div>
                         </label>
                       </div>
 
-                      {/* Conditional Input Field for Lab Cost */}
+                      {/* Input Field for Lab Cost */}
                       {proc.isLabPending && (
                         <div className="mt-3 animate-in slide-in-from-top-2">
                             <div className="flex items-center gap-2 bg-white border border-teal-200 rounded-lg px-3 py-2 shadow-sm">
                                 <FlaskConical size={16} className="text-teal-500" />
                                 <input 
-                                    type="number"
-                                    placeholder="0"
-                                    value={proc.labCost || ''}
+                                    type="text"
+                                    placeholder="000 000,00"
+                                    value={proc.labCost ? formatMoney(proc.labCost).replace(' MT', '') : ''}
                                     onChange={(e) => updateProcedureLabCost(idx, e.target.value)}
                                     className="flex-1 outline-none text-slate-800 font-bold placeholder:font-normal"
                                 />
                                 <span className="text-xs font-bold text-gray-400">MT</span>
                             </div>
                             {(!proc.labCost || proc.labCost === 0) && (
-                                <p className="text-[10px] text-amber-500 mt-1 pl-1">⚠️ Pendente: Insira o valor do custo.</p>
+                                <p className="text-[10px] text-amber-500 mt-1 pl-1 flex items-center gap-1">
+                                  <FlaskConical size={10} /> 
+                                  Pendente (será registado como 0 se vazio)
+                                </p>
                             )}
                         </div>
                       )}
@@ -514,12 +506,18 @@ const NewConsultation: React.FC = () => {
                  <span className="text-gray-500">Valor Bruto</span>
                  <span className="font-medium text-slate-700">{formatMoney(totals.totalGross)}</span>
               </div>
+              {totals.totalLab > 0 && (
+                <div className="flex justify-between text-sm text-amber-600">
+                   <span>- Custo Laboratório</span>
+                   <span className="font-medium">{formatMoney(totals.totalLab)}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center pt-2">
                  <span className="font-bold text-slate-800">Comissão (40%)</span>
                  <span className="text-2xl font-bold text-teal-600">{formatMoney(totals.totalCommission)}</span>
               </div>
               <p className="text-[10px] text-gray-400 text-right">
-                *Após dedução de custos lab e IVA (5%)
+                *Fórmula: ((Total - Lab) / 1.05) x 0.40
               </p>
            </div>
         </div>

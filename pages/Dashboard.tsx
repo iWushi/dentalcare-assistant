@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +13,7 @@ const Dashboard: React.FC = () => {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
+  const todayStr = now.toISOString().split('T')[0];
   
   const { 
     totalCommission, 
@@ -35,10 +35,8 @@ const Dashboard: React.FC = () => {
     
     const totalCommission = monthlyConsultations.reduce((sum, c) => sum + (Number(c.doctorCommission) || 0), 0);
     
-    // NEW PENDING LOGIC: Procedure has Toggle ON but LabCost is 0/Undefined
-    const pendingLabsList = consultations.filter(c => 
-        c.procedures && c.procedures.some(p => p.isLabPending && (!p.labCost || p.labCost === 0))
-    ).slice(0, 5);
+    // NEW PENDING LOGIC: Consultations marked with hasPendingLab AND date >= today
+    const pendingLabsList = consultations.filter(c => c.hasPendingLab && c.date >= todayStr).slice(0, 5);
 
     // Clínicas
     const sommerschieldTotal = monthlyConsultations
@@ -104,7 +102,7 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="pb-32 p-4 max-w-lg mx-auto space-y-6">
+    <div className="pb-40 p-4 max-w-lg mx-auto space-y-6">
       <header className="flex justify-between items-center">
         <div>
           <h1 className="text-xl font-semibold text-slate-800">DentalCare</h1>
@@ -180,24 +178,24 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* NEW CARD: Custos de laboratório pendentes */}
+      {/* ALERT CARD: Custos de laboratório pendentes */}
       {pendingLabsList.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 animate-in fade-in slide-in-from-bottom-2">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 animate-in fade-in slide-in-from-bottom-2 shadow-sm">
            <div className="flex items-center gap-3 mb-3">
              <div className="bg-amber-100 p-2 rounded-full text-amber-600">
                <FlaskConical size={20} />
              </div>
              <div className="flex-1">
                <h3 className="text-sm font-bold text-amber-800">Custos de laboratório pendentes</h3>
-               <p className="text-xs text-amber-600">{pendingLabsList.length} consultas a aguardar valor</p>
+               <p className="text-xs text-amber-600">{pendingLabsList.length} consultas a aguardar valor.</p>
              </div>
-             <Link to="/consultations" className="text-xs bg-white text-amber-600 px-3 py-1 rounded-lg border border-amber-200 font-bold">
+             <Link to="/consultations" className="text-xs bg-white text-amber-600 px-3 py-1 rounded-lg border border-amber-200 font-bold hover:bg-amber-50">
                Resolver
              </Link>
            </div>
            <div className="space-y-2">
                {pendingLabsList.slice(0, 3).map(c => (
-                 <div key={c.id} className="bg-white/60 p-2 rounded-lg flex justify-between items-center text-xs">
+                 <div key={c.id} className="bg-white/60 p-2 rounded-lg flex justify-between items-center text-xs border border-amber-100">
                     <div>
                       <span className="font-bold text-amber-900">{c.patientName}</span>
                       <span className="mx-1 text-amber-400">•</span>
@@ -234,8 +232,8 @@ const Dashboard: React.FC = () => {
                      </span>
                      <p className="text-xs text-slate-400 truncate max-w-[150px]">
                         {cons.procedures.map(p => {
-                           // Safety check for display
-                           if (!p.code || p.code.length > 10 || p.code.includes('{') || p.code.includes('[')) return '??';
+                           // Simplified display
+                           if (!p.code || p.code.length > 10) return '??';
                            return p.code;
                         }).join(', ')}
                      </p>
@@ -243,7 +241,7 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div className="text-right">
                    <div className="font-bold text-teal-600 text-sm">{formatMoney(Number(cons.doctorCommission))}</div>
-                   {cons.hasPendingLab && <span className="text-[10px] text-amber-500 font-medium flex justify-end items-center gap-1"><FlaskConical size={10}/> Lab pendente</span>}
+                   {cons.hasPendingLab && <span className="text-[10px] text-amber-500 font-medium flex justify-end items-center gap-1"><FlaskConical size={10}/> Pendente</span>}
                 </div>
              </div>
            ))}
