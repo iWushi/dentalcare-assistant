@@ -50,7 +50,7 @@ const printBudget = (budget: Budget) => {
               const originalTitle = document.title;
               const safeDate = budget.date.replace(/-/g, '');
               const safeName = budget.patientName.replace(/[^a-zA-Z0-9]/g, '_');
-              const safeStatus = budget.status.toUpperCase();
+              const safeStatus = budget.status === 'rascunho' ? 'RASCUNHO' : 'FINAL';
               
               const fileName = `ORC-${safeDate}-${safeName}-${safeStatus}`;
               
