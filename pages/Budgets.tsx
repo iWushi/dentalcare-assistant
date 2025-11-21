@@ -1,14 +1,82 @@
 import React from 'react';
 import { useData } from '../context/DataContext';
 import { Link } from 'react-router-dom';
-import { Plus, FileText, ChevronRight, Calendar, Trash2 } from 'lucide-react';
+import { Plus, FileText, Calendar, Trash2, Printer } from 'lucide-react';
+import ReactToPrint from 'react-to-print';
+import BudgetPDF from '../components/BudgetPDF';
+
+interface BudgetRowProps {
+  budget: any;
+  onDelete: (e: React.MouseEvent, id: string) => void;
+}
+
+const BudgetRow: React.FC<BudgetRowProps> = ({ budget, onDelete }) => {
+  const pdfRef = React.useRef<HTMLDivElement>(null);
+  
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:border-teal-200 transition-colors p-4 relative group">
+       {/* Hidden PDF for this item - needed for quick print */}
+       <div className="hidden">
+          <BudgetPDF ref={pdfRef} budget={budget} logoUrl="/logo.png" />
+       </div>
+
+       <Link to={`/budgets/${budget.id}`} className="block">
+          <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${budget.status === 'finalizado' ? 'bg-teal-50 text-teal-600' : 'bg-gray-100 text-gray-500'}`}>
+                      <FileText size={20} />
+                  </div>
+                  <div>
+                      <h3 className="font-bold text-slate-800">{budget.patientName}</h3>
+                      <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+                          <span className="font-medium text-slate-500">{budget.number}</span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1"><Calendar size={10} /> {new Date(budget.date).toLocaleDateString()}</span>
+                      </div>
+                  </div>
+              </div>
+              <div className="text-right">
+                  <div className="text-lg font-bold text-teal-600">{(budget.totalValue || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ")} MT</div>
+                  <div className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded inline-block mt-1 ${budget.status === 'finalizado' ? 'bg-teal-100 text-teal-700' : 'bg-yellow-50 text-yellow-600'}`}>
+                      {budget.status}
+                  </div>
+              </div>
+          </div>
+       </Link>
+       
+       <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center">
+           <span className="text-xs text-gray-400">{budget.phases?.length || 0} fases incluídas</span>
+           
+           <div className="flex gap-2">
+               {/* Quick Print Button */}
+               <ReactToPrint
+                 trigger={() => (
+                   <button 
+                     className="p-2 text-gray-300 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors" 
+                     title="Imprimir PDF"
+                     onClick={(e) => e.stopPropagation()}
+                   >
+                       <Printer size={16} />
+                   </button>
+                 )}
+                 content={() => pdfRef.current}
+                 documentTitle={`Orcamento_${budget.number}`}
+               />
+
+               <button 
+                onClick={(e) => onDelete(e, budget.id)}
+                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+               >
+                  <Trash2 size={16} />
+               </button>
+           </div>
+       </div>
+    </div>
+  );
+};
 
 const Budgets: React.FC = () => {
   const { budgets, deleteBudget } = useData();
-
-  const formatMoney = (val: number) => {
-    return val.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' MT';
-  };
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
       e.preventDefault();
@@ -42,43 +110,7 @@ const Budgets: React.FC = () => {
               </div>
           ) : (
               budgets.map(budget => (
-                  <Link 
-                    key={budget.id} 
-                    to={`/budgets/${budget.id}`}
-                    className="block bg-white rounded-xl border border-gray-100 shadow-sm hover:border-teal-200 transition-colors p-4"
-                  >
-                      <div className="flex justify-between items-start">
-                          <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${budget.status === 'finalizado' ? 'bg-teal-50 text-teal-600' : 'bg-gray-100 text-gray-500'}`}>
-                                  <FileText size={20} />
-                              </div>
-                              <div>
-                                  <h3 className="font-bold text-slate-800">{budget.patientName}</h3>
-                                  <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
-                                      <span className="font-medium text-slate-500">{budget.number}</span>
-                                      <span>•</span>
-                                      <span className="flex items-center gap-1"><Calendar size={10} /> {new Date(budget.date).toLocaleDateString()}</span>
-                                  </div>
-                              </div>
-                          </div>
-                          <div className="text-right">
-                              <div className="text-lg font-bold text-teal-600">{formatMoney(budget.totalValue)}</div>
-                              <div className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded inline-block mt-1 ${budget.status === 'finalizado' ? 'bg-teal-100 text-teal-700' : 'bg-yellow-50 text-yellow-600'}`}>
-                                  {budget.status}
-                              </div>
-                          </div>
-                      </div>
-                      
-                      <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center">
-                          <span className="text-xs text-gray-400">{budget.phases.length} fases incluídas</span>
-                          <button 
-                            onClick={(e) => handleDelete(e, budget.id)}
-                            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                              <Trash2 size={16} />
-                          </button>
-                      </div>
-                  </Link>
+                  <BudgetRow key={budget.id} budget={budget} onDelete={handleDelete} />
               ))
           )}
       </div>

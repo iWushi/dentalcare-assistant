@@ -14,9 +14,8 @@ const DEFAULT_PHASES = [
   "Fase 4: Remoção e confeção do aparelho de contenção"
 ];
 
-// Alterado para vazio para evitar erro de carregamento de imagem no PDF
-// Se tiver um URL real de logo, coloque aqui.
-const LOGO_URL = ""; 
+// Definição do Logo: O utilizador deve colocar o ficheiro 'logo.png' na pasta 'public'
+const LOGO_URL = "/logo.png"; 
 
 const BudgetEditor: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -180,7 +179,7 @@ const BudgetEditor: React.FC = () => {
       }
 
       const budget = prepareBudgetForSave(false);
-      if (!budget) return; // Should be caught by validate
+      if (!budget) return; 
 
       setIsSubmitting(true);
       try {
@@ -193,11 +192,10 @@ const BudgetEditor: React.FC = () => {
       }
   };
 
-  // Called by ReactToPrint before printing
   const handleBeforePrint = async () => {
       if (!validate()) {
           window.scrollTo({ top: 0, behavior: 'smooth' });
-          throw new Error("Validation failed"); // Stops print
+          throw new Error("Validation failed");
       }
 
       const budget = prepareBudgetForSave(true);
@@ -208,7 +206,7 @@ const BudgetEditor: React.FC = () => {
       setIsSubmitting(true);
       try {
          await saveBudget(budget);
-         // We don't navigate here, we wait for afterPrint
+         setIsSubmitting(false); 
       } catch (e) {
          alert("Erro ao guardar orçamento");
          setIsSubmitting(false);
@@ -216,7 +214,6 @@ const BudgetEditor: React.FC = () => {
       }
   };
 
-  // Computed
   const filteredProcedures = procSearchTerm 
     ? availableProcedures.filter(p => p.id.toLowerCase().includes(procSearchTerm.toLowerCase()) || p.descricao.toLowerCase().includes(procSearchTerm.toLowerCase()))
     : [];
@@ -239,40 +236,41 @@ const BudgetEditor: React.FC = () => {
   return (
     <div className="pb-40 p-4 max-w-5xl mx-auto min-h-screen bg-gray-50">
       
-      {/* Header */}
-      <header className="flex items-center justify-between mb-6">
+      {/* Header Responsivo */}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
          <div className="flex items-center gap-3">
              <button onClick={() => navigate('/budgets')} className="p-2 -ml-2 hover:bg-gray-200 rounded-full text-gray-600">
                  <ArrowLeft size={24} />
              </button>
              <div>
-                 <h1 className="text-2xl font-bold text-slate-800">{id !== 'new' ? 'Editar Orçamento' : 'Novo Orçamento'}</h1>
+                 <h1 className="text-xl md:text-2xl font-bold text-slate-800">{id !== 'new' ? 'Editar Orçamento' : 'Novo Orçamento'}</h1>
                  <p className="text-xs text-gray-500">{status === 'rascunho' ? 'Rascunho' : 'Finalizado'}</p>
              </div>
          </div>
-         <div className="flex gap-2">
+         
+         <div className="flex gap-2 w-full md:w-auto">
              <button 
                 onClick={handleSaveDraft} 
-                className="px-4 py-2 bg-white border border-gray-300 rounded-xl font-bold text-slate-600 text-sm hover:bg-gray-50 flex items-center gap-2"
+                className="flex-1 md:flex-none justify-center px-4 py-2.5 bg-white border border-gray-300 rounded-xl font-bold text-slate-600 text-sm hover:bg-gray-50 flex items-center gap-2 active:scale-95 transition-all"
              >
-                <Save size={16} /> Rascunho
+                <Save size={16} /> 
+                <span>Rascunho</span>
              </button>
              
-             {/* ReactToPrint Wrapper for the Finalize Button */}
              <ReactToPrint
-                trigger={() => (
-                    <button 
-                        disabled={isSubmitting}
-                        className="px-4 py-2 bg-teal-600 text-white rounded-xl font-bold text-sm hover:bg-teal-700 flex items-center gap-2 shadow-lg shadow-teal-600/20 disabled:opacity-50"
-                    >
-                        {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
-                        Finalizar & PDF
-                    </button>
-                )}
-                content={() => printComponentRef.current}
-                onBeforeGetContent={handleBeforePrint}
-                onAfterPrint={() => navigate('/budgets')}
-                documentTitle={`Orcamento_${date}_${selectedPatientId}`}
+               trigger={() => (
+                   <button 
+                      disabled={isSubmitting}
+                      className="flex-[2] md:flex-none justify-center px-4 py-2.5 bg-teal-600 text-white rounded-xl font-bold text-sm hover:bg-teal-700 flex items-center gap-2 shadow-lg shadow-teal-600/20 disabled:opacity-50 active:scale-95 transition-all whitespace-nowrap"
+                   >
+                      {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+                      <span>Finalizar & PDF</span>
+                   </button>
+               )}
+               content={() => printComponentRef.current}
+               documentTitle={`Orcamento_${date}_${selectedPatientId}`}
+               onBeforeGetContent={handleBeforePrint}
+               onAfterPrint={() => navigate('/budgets')}
              />
          </div>
       </header>
@@ -304,11 +302,11 @@ const BudgetEditor: React.FC = () => {
                          
                          {selectedPatientId ? (
                              <div className="flex items-center justify-between bg-teal-50 border border-teal-200 p-3 rounded-xl">
-                                <div className="flex items-center gap-2">
-                                   <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-xs font-bold">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                   <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-700 flex-shrink-0 flex items-center justify-center text-xs font-bold">
                                       {patientSearchTerm.charAt(0).toUpperCase()}
                                    </div>
-                                   <span className="text-sm font-bold text-teal-900 truncate max-w-[150px]">
+                                   <span className="text-sm font-bold text-teal-900 truncate">
                                       {patientSearchTerm}
                                    </span>
                                 </div>
@@ -317,7 +315,7 @@ const BudgetEditor: React.FC = () => {
                                       setSelectedPatientId('');
                                       setPatientSearchTerm('');
                                   }}
-                                  className="p-1 text-teal-600 hover:bg-teal-100 rounded-full"
+                                  className="p-1 text-teal-600 hover:bg-teal-100 rounded-full flex-shrink-0"
                                 >
                                    <X size={14} />
                                 </button>
@@ -348,7 +346,6 @@ const BudgetEditor: React.FC = () => {
                                                        setSelectedPatientId(p.id);
                                                        setPatientSearchTerm(p.name);
                                                        setShowPatientSuggestions(false);
-                                                       // Limpa erro de paciente se existir
                                                        if (formErrors.some(e => e.includes("paciente"))) {
                                                           setFormErrors(prev => prev.filter(e => !e.includes("paciente")));
                                                        }
@@ -397,8 +394,8 @@ const BudgetEditor: React.FC = () => {
              {phases.map((phase, idx) => (
                  <div key={phase.id} className={`bg-white rounded-2xl border transition-all ${activePhaseIdx === idx ? 'border-teal-500 ring-1 ring-teal-500 shadow-md' : 'border-gray-200'}`}>
                      {/* Phase Header */}
-                     <div className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 rounded-t-2xl" onClick={() => setActivePhaseIdx(activePhaseIdx === idx ? null : idx)}>
-                         <div className="flex-1 mr-4">
+                     <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-gray-50 rounded-t-2xl" onClick={() => setActivePhaseIdx(activePhaseIdx === idx ? null : idx)}>
+                         <div className="flex-1 w-full sm:w-auto">
                              {activePhaseIdx === idx ? (
                                  <input 
                                     type="text" 
@@ -408,11 +405,11 @@ const BudgetEditor: React.FC = () => {
                                     className="w-full font-bold text-slate-800 bg-transparent border-b border-dashed border-gray-300 focus:border-teal-500 outline-none pb-1"
                                  />
                              ) : (
-                                 <h3 className="font-bold text-slate-800">{phase.name}</h3>
+                                 <h3 className="font-bold text-slate-800 break-words">{phase.name}</h3>
                              )}
                          </div>
-                         <div className="flex items-center gap-3">
-                             <span className="text-sm font-bold text-teal-600 bg-teal-50 px-2 py-1 rounded">
+                         <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
+                             <span className="text-sm font-bold text-teal-600 bg-teal-50 px-2 py-1 rounded whitespace-nowrap">
                                  {phase.subtotal.toFixed(2)} MT
                              </span>
                              {activePhaseIdx === idx ? <ChevronUp size={18} className="text-gray-400"/> : <ChevronDown size={18} className="text-gray-400"/>}
@@ -423,33 +420,41 @@ const BudgetEditor: React.FC = () => {
                      {activePhaseIdx === idx && (
                          <div className="p-4 pt-0 border-t border-gray-100">
                              {/* Procedure List */}
-                             <div className="space-y-2 mt-4">
+                             <div className="space-y-3 mt-4">
                                  {phase.procedures.map((proc, pIdx) => (
-                                     <div key={pIdx} className="flex items-center gap-2 text-sm py-2 border-b border-gray-50 last:border-0">
+                                     <div key={pIdx} className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm py-3 border-b border-gray-50 last:border-0">
+                                         {/* Name */}
                                          <div className="flex-1">
-                                             <span className="font-bold text-teal-700 mr-2">{proc.code}</span>
+                                             <span className="font-bold text-teal-700 mr-2 bg-teal-50 px-1.5 py-0.5 rounded text-xs">{proc.code}</span>
                                              <span className="text-slate-700">{proc.name}</span>
                                          </div>
-                                         <div className="w-20">
-                                             <input 
-                                                type="number" 
-                                                min="1"
-                                                value={proc.quantity}
-                                                onChange={(e) => updateProcedure(idx, pIdx, 'quantity', e.target.value)}
-                                                className="w-full bg-gray-50 border border-gray-200 rounded px-2 py-1 text-center outline-none focus:border-teal-500"
-                                             />
+                                         
+                                         {/* Controls Row (Mobile Optimized) */}
+                                         <div className="flex items-center justify-between sm:justify-end gap-2 mt-1 sm:mt-0 pl-8 sm:pl-0">
+                                             <div className="flex items-center gap-1">
+                                                <span className="text-[10px] text-gray-400 uppercase sm:hidden">Qtd</span>
+                                                <input 
+                                                    type="number" 
+                                                    min="1"
+                                                    value={proc.quantity}
+                                                    onChange={(e) => updateProcedure(idx, pIdx, 'quantity', e.target.value)}
+                                                    className="w-16 bg-gray-50 border border-gray-200 rounded px-2 py-1 text-center outline-none focus:border-teal-500 font-bold text-slate-700"
+                                                />
+                                             </div>
+                                             
+                                             <div className="w-24 text-right font-bold text-slate-700">
+                                                 {proc.total.toFixed(2)}
+                                             </div>
+                                             
+                                             <button onClick={() => removeProcedure(idx, pIdx)} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors">
+                                                 <Trash2 size={16} />
+                                             </button>
                                          </div>
-                                         <div className="w-24 text-right font-medium text-slate-600">
-                                             {proc.total.toFixed(2)}
-                                         </div>
-                                         <button onClick={() => removeProcedure(idx, pIdx)} className="text-gray-300 hover:text-red-500 p-1">
-                                             <Trash2 size={16} />
-                                         </button>
                                      </div>
                                  ))}
                                  {phase.procedures.length === 0 && (
-                                     <div className="text-center text-gray-400 text-xs py-4 italic">
-                                         Adicione procedimentos abaixo
+                                     <div className="text-center text-gray-400 text-xs py-6 italic bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                                         Adicione procedimentos abaixo para esta fase
                                      </div>
                                  )}
                              </div>
@@ -462,9 +467,9 @@ const BudgetEditor: React.FC = () => {
                                         placeholder="Adicionar procedimento (código ou nome)..."
                                         value={procSearchTerm}
                                         onChange={(e) => setProcSearchTerm(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                                        className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
                                      />
-                                     <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
+                                     <Search size={16} className="absolute left-3 top-3.5 text-gray-400" />
                                  </div>
                                  {procSearchTerm && filteredProcedures.length > 0 && (
                                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-10 max-h-48 overflow-y-auto">
@@ -472,10 +477,10 @@ const BudgetEditor: React.FC = () => {
                                              <button 
                                                 key={p.id}
                                                 onClick={() => handleAddProcedureToPhase(idx, p)}
-                                                className="w-full text-left px-4 py-2 text-sm hover:bg-teal-50 flex justify-between border-b border-gray-50 last:border-0"
+                                                className="w-full text-left px-4 py-3 text-sm hover:bg-teal-50 flex justify-between border-b border-gray-50 last:border-0"
                                              >
                                                  <span><span className="font-bold text-teal-600">{p.id}</span> {p.descricao}</span>
-                                                 <span className="text-gray-500">{p.valor_com_iva} MT</span>
+                                                 <span className="text-gray-500 font-medium">{p.valor_com_iva} MT</span>
                                              </button>
                                          ))}
                                      </div>
@@ -483,8 +488,8 @@ const BudgetEditor: React.FC = () => {
                              </div>
                              
                              <div className="mt-4 flex justify-end">
-                                 <button onClick={() => handleRemovePhase(idx)} className="text-xs text-red-500 hover:underline flex items-center gap-1">
-                                     <Trash2 size={12} /> Remover Fase
+                                 <button onClick={() => handleRemovePhase(idx)} className="text-xs text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors flex items-center gap-1 font-medium">
+                                     <Trash2 size={14} /> Remover Fase
                                  </button>
                              </div>
                          </div>
@@ -494,14 +499,14 @@ const BudgetEditor: React.FC = () => {
 
              <button 
                 onClick={handleAddPhase}
-                className="w-full py-3 border-2 border-dashed border-gray-300 rounded-2xl text-gray-400 font-bold text-sm hover:border-teal-500 hover:text-teal-600 hover:bg-teal-50 transition-all flex items-center justify-center gap-2"
+                className="w-full py-4 border-2 border-dashed border-gray-300 rounded-2xl text-gray-400 font-bold text-sm hover:border-teal-500 hover:text-teal-600 hover:bg-teal-50 transition-all flex items-center justify-center gap-2"
              >
-                 <Plus size={18} /> Nova Fase
+                 <Plus size={18} /> Adicionar Nova Fase
              </button>
          </div>
       </div>
 
-      {/* Hidden Print Component - Rendered off-screen via absolute positioning to ensure styles are captured */}
+      {/* Hidden Print Component */}
       <div style={{ position: 'absolute', top: '-10000px', left: '-10000px' }}>
          <BudgetPDF ref={printComponentRef} budget={currentBudgetForPrint} logoUrl={LOGO_URL} />
       </div>
