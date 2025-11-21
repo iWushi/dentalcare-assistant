@@ -246,9 +246,10 @@ const ChatPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-112px)] lg:h-[calc(100vh-64px)] bg-gray-50 lg:flex-row pb-safe">
+    // Adjusted height for desktop to ensure BottomNav doesn't cover prompts (100vh - 112px)
+    <div className="flex flex-col h-[calc(100vh-112px)] bg-gray-50 lg:flex-row pb-safe">
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full w-full max-w-5xl mx-auto bg-white lg:shadow-xl lg:my-4 lg:rounded-2xl lg:border lg:border-gray-200 overflow-hidden">
+      <div className="flex-1 flex flex-col w-full max-w-5xl mx-auto bg-white lg:shadow-xl lg:my-4 lg:h-[calc(100%-2rem)] lg:rounded-2xl lg:border lg:border-gray-200 overflow-hidden">
         
         {/* Header */}
         <header className="bg-white/90 backdrop-blur-md border-b border-gray-100 p-3 pt-safe flex items-center justify-between flex-shrink-0 z-10 sticky top-0">

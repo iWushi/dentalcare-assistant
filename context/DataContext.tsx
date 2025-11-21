@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Patient, Consultation, DbPrice, Procedure } from '../types';
+import { Patient, Consultation, DbPrice, Procedure, Budget } from '../types';
 import { supabase } from '../services/supabase';
 
 interface DataContextType {
   patients: Patient[];
   consultations: Consultation[];
+  budgets: Budget[];
   availableProcedures: DbPrice[]; // Preços vindos da BD
   isLoading: boolean;
   error: string | null;
@@ -16,6 +17,10 @@ interface DataContextType {
   addPatient: (patient: Omit<Patient, 'id' | 'createdAt'>) => Promise<Patient | null>;
   deletePatient: (id: string) => Promise<void>;
   mergePatients: (targetId: string, sourceId: string) => Promise<void>;
+  
+  // Métodos de Orçamentos
+  saveBudget: (budget: Budget) => Promise<string>; // Retorna ID
+  deleteBudget: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -80,6 +85,7 @@ const normalizeDate = (dateStr: any): string => {
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [availableProcedures, setAvailableProcedures] = useState<DbPrice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -183,20 +189,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
              };
           }).filter(Boolean) as Procedure[];
 
-          // Calcular estado de Pendência (Lógica Pedida)
-          // Pendência se: Existe algum procedimento com 'tem_lab' = true E 'custo_lab' da consulta é 0 ou NULL
+          // Calcular estado de Pendência
           const hasItemsWithLab = proceduresList.some(p => p.isLabPending);
           const isPending = hasItemsWithLab && (safeLabCost === 0 || !c.custo_lab);
 
-          // Se tiver custo de laboratório e itens de laboratório, distribuímos visualmente para a UI
-          // Apenas para UX, para o utilizador ver onde está o custo quando editar
           if (safeLabCost > 0) {
               const labItems = proceduresList.filter(p => p.isLabPending);
               if (labItems.length > 0) {
-                  // Atribuir tudo ao primeiro item de Lab encontrado para simplificar edição
                   labItems[0].labCost = safeLabCost;
               } else if (proceduresList.length > 0) {
-                  // Fallback
                   proceduresList[0].labCost = safeLabCost;
               }
           }
@@ -216,8 +217,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         });
 
+        // 4. Fetch Budgets (Orçamentos)
+        const { data: budgetsData, error: budgetsError } = await supabase
+          .from('orcamentos')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        // Se a tabela não existir ainda, não falha a app toda, apenas avisa
+        if (budgetsError && budgetsError.code !== '42P01') {
+             console.error("Erro fetching budgets:", budgetsError);
+        }
+
+        const formattedBudgets: Budget[] = (budgetsData || []).map((b: any) => ({
+            id: b.id,
+            patientId: b.paciente_id,
+            patientName: b.paciente_nome,
+            date: normalizeDate(b.data_emissao),
+            number: b.numero,
+            status: b.estado,
+            phases: b.fases || [],
+            totalValue: parseCurrency(b.valor_total),
+            createdAt: b.created_at,
+            updatedAt: b.updated_at
+        }));
+
         setPatients(formattedPatients);
         setConsultations(formattedConsultations);
+        setBudgets(formattedBudgets);
 
       } catch (err: any) {
         console.error('Error fetching data:', err);
@@ -237,19 +263,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addConsultation = async (consultation: Consultation) => {
     try {
-      // 1. Calcular Custo Lab Total a partir da UI
       const totalLabCost = consultation.procedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
       
-      // 2. Preparar JSONB array: [{ codigo, descricao, tem_lab }]
       const procedimentosJson = consultation.procedures.map(p => ({
           codigo: p.code,
           descricao: p.name,
           tem_lab: p.isLabPending || false,
-          valor: p.value // Guardar histórico de preço
+          valor: p.value 
       }));
       
-      // 3. Calcular Valores Finais
-      // FÓRMULA: ((Total - Lab) / 1.05) * 0.40
       const baseCalc = Math.max(0, consultation.totalValue - totalLabCost);
       const valorSemIva = baseCalc / 1.05;
       const valorFinalDra = valorSemIva * 0.40;
@@ -260,9 +282,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clinica: consultation.clinic,
         paciente_id: consultation.patientId,
         paciente_nome: consultation.patientName,
-        procedimentos: procedimentosJson, // JSONB
+        procedimentos: procedimentosJson,
         valor_total: consultation.totalValue,
-        custo_lab: totalLabCost, // Coluna numérica
+        custo_lab: totalLabCost,
         valor_sem_iva: valorSemIva,
         valor_final_dra: valorFinalDra,
         observacoes: consultation.notes || '',
@@ -275,7 +297,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) throw error;
       
-      // Atualizar estado local com os valores calculados
       const newConsLocal = { ...consultation, doctorCommission: valorFinalDra, hasPendingLab: (totalLabCost === 0 && consultation.procedures.some(p => p.isLabPending)) };
       setConsultations(prev => [newConsLocal, ...prev]);
       
@@ -290,16 +311,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const dbUpdates: any = {};
       
-      // Recuperar estado actual para merge
       const current = consultations.find(c => c.id === id);
       if (!current) throw new Error("Consulta não encontrada localmente");
 
       const mergedProcedures = updates.procedures || current.procedures;
       const mergedTotalValue = updates.totalValue !== undefined ? updates.totalValue : current.totalValue;
 
-      // Se houver alterações que afectam valores
       if (updates.procedures || updates.totalValue !== undefined) {
-          // Recalcular tudo
           const totalLabCost = mergedProcedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
           const baseCalc = Math.max(0, mergedTotalValue - totalLabCost);
           const valorSemIva = baseCalc / 1.05;
@@ -310,7 +328,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           dbUpdates.valor_sem_iva = valorSemIva;
           dbUpdates.valor_final_dra = valorFinalDra;
 
-          // Preparar JSONB
           dbUpdates.procedimentos = mergedProcedures.map(p => ({
              codigo: p.code,
              descricao: p.name,
@@ -331,17 +348,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) throw error;
       
-      // Atualizar UI localmente
       setConsultations(prev => prev.map(c => {
           if (c.id !== id) return c;
           
-          // Merge updates
           let updated = { ...c, ...updates };
           
-          // Garantir que valores calculados reflectem o que foi para a BD
           if (dbUpdates.valor_final_dra !== undefined) {
               updated.doctorCommission = dbUpdates.valor_final_dra;
-              // Check pendency
               const labCost = dbUpdates.custo_lab;
               const hasLabItems = (updates.procedures || c.procedures).some(p => p.isLabPending);
               updated.hasPendingLab = hasLabItems && (labCost === 0);
@@ -454,10 +467,87 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // --- GESTÃO DE ORÇAMENTOS ---
+
+  const saveBudget = async (budget: Budget): Promise<string> => {
+      try {
+          const dbPayload = {
+              paciente_id: budget.patientId,
+              paciente_nome: budget.patientName,
+              data_emissao: budget.date,
+              numero: budget.number,
+              estado: budget.status,
+              fases: budget.phases, // JSONB
+              valor_total: budget.totalValue,
+              updated_at: new Date().toISOString()
+          };
+
+          let savedBudget = null;
+
+          // Se já tiver ID válido e não temporário, é update
+          if (budget.id && !budget.id.startsWith('temp-')) {
+             const { data, error } = await supabase
+                .from('orcamentos')
+                .update(dbPayload)
+                .eq('id', budget.id)
+                .select()
+                .single();
+             if (error) throw error;
+             savedBudget = data;
+          } else {
+             // Insert
+             const { data, error } = await supabase
+                .from('orcamentos')
+                .insert([dbPayload])
+                .select()
+                .single();
+             if (error) throw error;
+             savedBudget = data;
+          }
+          
+          const newBudgetLocal: Budget = {
+              id: savedBudget.id,
+              patientId: savedBudget.paciente_id,
+              patientName: savedBudget.paciente_nome,
+              date: normalizeDate(savedBudget.data_emissao),
+              number: savedBudget.numero,
+              status: savedBudget.estado,
+              phases: savedBudget.fases,
+              totalValue: parseCurrency(savedBudget.valor_total),
+              createdAt: savedBudget.created_at,
+              updatedAt: savedBudget.updated_at
+          };
+
+          setBudgets(prev => {
+              // Remove versão anterior se existir (update) ou adiciona (create)
+              const filtered = prev.filter(b => b.id !== savedBudget.id && b.id !== budget.id);
+              return [newBudgetLocal, ...filtered];
+          });
+
+          return savedBudget.id;
+
+      } catch (err: any) {
+          console.error("Erro ao guardar orçamento", err);
+          throw err;
+      }
+  };
+
+  const deleteBudget = async (id: string) => {
+      try {
+          const { error } = await supabase.from('orcamentos').delete().eq('id', id);
+          if (error) throw error;
+          setBudgets(prev => prev.filter(b => b.id !== id));
+      } catch (err: any) {
+          console.error("Erro ao apagar orçamento", err);
+          throw err;
+      }
+  };
+
   return (
     <DataContext.Provider value={{
       patients,
       consultations,
+      budgets,
       availableProcedures,
       isLoading,
       error,
@@ -468,7 +558,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteConsultation,
       addPatient,
       deletePatient,
-      mergePatients
+      mergePatients,
+      saveBudget,
+      deleteBudget
     }}>
       {children}
     </DataContext.Provider>

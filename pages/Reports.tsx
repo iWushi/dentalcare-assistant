@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { 
@@ -284,32 +285,87 @@ const Reports: React.FC = () => {
     return { data, curYearInt, prevYearInt };
   }, [consultations, selYear]);
 
-  // --- CSV ---
+  // --- CSV EXPORTAÇÃO (FORMATO CLÍNICO) ---
   const generateCSV = () => {
-    const periodLabel = getPeriodLabel();
-    const sortedData = [...reportData.filtered].sort((a, b) => a.date.localeCompare(b.date));
+    // 1. Ordenar dados (Data ASC + Criação ASC)
+    const sortedData = [...reportData.filtered].sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        
+        const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return createdA - createdB;
+    });
     
-    let csvContent = "\uFEFF";
-    csvContent += `Relatório DentalCare;${periodLabel}\n\n`;
-    csvContent += `Data;Paciente;Clínica;Tratamento;Valor Bruto;Comissão\n`;
+    // 2. Dados do Cabeçalho
+    const doctorName = "Dra. Shamila Modan";
+    
+    // Definir "Local"
+    const clinicsFound = new Set(sortedData.map(c => c.clinic));
+    let localStr = "Sommerschield";
+    if (clinicsFound.has('Sommerschield') && clinicsFound.has('Baixa')) {
+        localStr = "Sommerschield e Baixa";
+    } else if (clinicsFound.has('Baixa') && !clinicsFound.has('Sommerschield')) {
+        localStr = "Baixa";
+    } else if (clinicsFound.size === 0) {
+        localStr = "—";
+    }
 
-    sortedData.forEach((c) => {
+    // Definir "Mês"
+    let monthLabel = selMonth;
+    if (filterType === 'month') {
+        monthLabel = MONTHS.find(m => m.value === selMonth)?.label || selMonth;
+    } else {
+        monthLabel = `${formatDateBr(dateRange.start)} a ${formatDateBr(dateRange.end)}`;
+    }
+    const timeLabel = filterType === 'month' ? `${monthLabel} ${selYear}` : monthLabel;
+
+    // 3. Construir Conteúdo CSV (com separador ;)
+    const SEP = ';';
+    let csvContent = "\uFEFF"; // BOM para abrir correctamente no Excel
+    
+    // Cabeçalho
+    csvContent += `NOME DO MEDICO:${SEP}${doctorName}\n`;
+    csvContent += `LOCAL:${SEP}${localStr}\n`;
+    csvContent += `MES:${SEP}${timeLabel}\n`;
+    csvContent += `\n`; 
+
+    // Tabela
+    csvContent += `ORDEM${SEP}NOME DO PACIENTE${SEP}TRATAMENTO FEITO${SEP}VALOR${SEP}OBSERVACAO\n`;
+
+    // Linhas
+    sortedData.forEach((c, index) => {
+      const order = index + 1;
+      const patientName = c.patientName ? c.patientName.replace(/;/g, ',') : '';
+      
+      // Tratamentos (apenas códigos)
       const treatments = c.procedures
-          .map(p => (p.code && p.code.length < 10) ? p.code : '')
+          .map(p => p.code)
           .filter(Boolean)
           .join(' + ');
 
-      const valStr = (c.totalValue || 0).toFixed(2).replace('.', ',');
-      const commStr = (c.doctorCommission || 0).toFixed(2).replace('.', ',');
-      const dateStr = formatDateBr(c.date);
-      csvContent += `${dateStr};${c.patientName};${c.clinic};${treatments};"${valStr}";"${commStr}"\n`;
+      // Valor Formatado: "000 000,00" (sem símbolo monetário)
+      const val = c.doctorCommission || 0;
+      const valStr = val.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+
+      // Observação
+      const obs = c.notes ? c.notes.replace(/;/g, ',').replace(/\n/g, ' ') : "—";
+      
+      csvContent += `${order}${SEP}${patientName}${SEP}${treatments}${SEP}${valStr}${SEP}${obs}\n`;
     });
 
+    // 4. Download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `Relatorio_${selYear}_${selMonth}.csv`);
+    
+    const fileName = filterType === 'month'
+         ? `Relatorio_Mensal_${monthLabel}_${selYear}.csv`
+         : `Relatorio_${dateRange.start}_${dateRange.end}.csv`;
+         
+    link.setAttribute('download', fileName);
     link.click();
   };
 
@@ -411,7 +467,7 @@ const Reports: React.FC = () => {
         </div>
       </div>
 
-      {/* 1. CARD TOTAL LÍQUIDO (Updated Title) */}
+      {/* 1. CARD TOTAL LÍQUIDO */}
       <section className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
         <div className="flex justify-between items-start mb-2">
             <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Líquido</span>
@@ -468,7 +524,7 @@ const Reports: React.FC = () => {
         <p className="text-[10px] text-gray-400 mt-3 italic">"Onde estou a gerar mais rendimento neste período?"</p>
       </section>
 
-      {/* 3. CARD PENDÊNCIAS LAB (NEW) - Only show if pending labs exist */}
+      {/* 3. CARD PENDÊNCIAS LAB */}
       {reportData.pendingLabs.length > 0 && (
         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5 relative">
              <div className="absolute top-4 right-4 text-xs font-bold bg-amber-200 text-amber-800 px-2 py-1 rounded-full">
@@ -503,7 +559,7 @@ const Reports: React.FC = () => {
         </div>
       )}
 
-      {/* 4. CARD TOP 5 CATEGORIAS (Updated) */}
+      {/* 4. CARD TOP 5 CATEGORIAS */}
       <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
         <h2 className="text-lg font-medium text-slate-800 mb-6">Top 5 Categorias</h2>
         <div className="h-48 w-full mb-2">
@@ -537,7 +593,7 @@ const Reports: React.FC = () => {
         <p className="text-[10px] text-gray-400 italic">"Quais os procedimentos que me estão a gerar maior rendimento neste período?"</p>
       </section>
 
-      {/* 5. CARD COMPARATIVO ANUAL (Updated) */}
+      {/* 5. CARD COMPARATIVO ANUAL */}
       <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
         <div className="flex items-center justify-between mb-6">
            <h2 className="text-lg font-medium text-slate-800">Comparativo Anual</h2>
@@ -582,7 +638,7 @@ const Reports: React.FC = () => {
         <p className="text-[10px] text-gray-400 italic mt-4">"Como está este ano comparado com o anterior?"</p>
       </section>
 
-      {/* 6. CARD PACIENTES (NEW Donut) */}
+      {/* 6. CARD PACIENTES */}
       <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
          <div className="flex items-center justify-between mb-4">
              <h2 className="text-lg font-medium text-slate-800">Pacientes</h2>

@@ -68,3 +68,33 @@ export interface Consultation {
   hasPendingLab: boolean; // Calculado via JSONB
   notes?: string; // Mapeado para observacoes
 }
+
+// --- NOVOS TIPOS PARA ORÇAMENTOS ---
+
+export interface BudgetProcedure {
+  code: string;
+  name: string;
+  unitValue: number;
+  quantity: number;
+  total: number;
+}
+
+export interface BudgetPhase {
+  id: string;
+  name: string;
+  procedures: BudgetProcedure[];
+  subtotal: number;
+}
+
+export interface Budget {
+  id: string;
+  patientId: string;
+  patientName: string;
+  date: string;
+  number: string; // ORC-YYYYMMDD-XXX
+  status: 'rascunho' | 'finalizado';
+  phases: BudgetPhase[];
+  totalValue: number;
+  createdAt?: string;
+  updatedAt?: string;
+}

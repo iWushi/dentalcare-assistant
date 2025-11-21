@@ -14,6 +14,8 @@ import PatientDetails from './pages/PatientDetails';
 import NewConsultation from './pages/NewConsultation';
 import Consultations from './pages/Consultations';
 import Login from './pages/Login';
+import Budgets from './pages/Budgets';
+import BudgetEditor from './pages/BudgetEditor';
 
 const Layout = () => (
   <div className="min-h-screen bg-gray-50 font-sans text-slate-900">
@@ -54,6 +56,9 @@ const App: React.FC = () => {
               <Route path="patients/:id" element={<PatientDetails />} />
               <Route path="new-consultation" element={<NewConsultation />} />
               <Route path="consultations" element={<Consultations />} />
+              <Route path="budgets" element={<Budgets />} />
+              <Route path="budgets/new" element={<BudgetEditor />} />
+              <Route path="budgets/:id" element={<BudgetEditor />} />
             </Route>
           </Routes>
         </HashRouter>
