@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { createRoot } from 'react-dom/client';
 import { useData } from '../context/DataContext';
 import { Budget, BudgetPhase, BudgetProcedure, DbPrice } from '../types';
 import { ArrowLeft, Plus, Save, Trash2, ChevronDown, ChevronUp, Printer, Search, X, Loader2, AlertCircle } from 'lucide-react';
 import BudgetPDF from '../components/BudgetPDF';
-import ReactToPrint from 'react-to-print';
 
 const DEFAULT_PHASES = [
   "Fase 1: Consulta e realização de exames para estudo de caso",
@@ -14,8 +14,78 @@ const DEFAULT_PHASES = [
   "Fase 4: Remoção e confeção do aparelho de contenção"
 ];
 
-// Definição do Logo: O utilizador deve colocar o ficheiro 'logo.png' na pasta 'public'
-const LOGO_URL = "/logo.png"; 
+// Helper to print manually without external libraries to avoid ESM import errors
+const printBudget = (budget: Budget, onAfterPrint?: () => void) => {
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  
+  const doc = iframe.contentWindow?.document;
+  if (!doc) return;
+
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Orçamento ${budget.number}</title>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+           body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+           @page { margin: 0; }
+        </style>
+      </head>
+      <body>
+        <div id="print-mount"></div>
+      </body>
+    </html>
+  `);
+  doc.close();
+
+  // Wait for Tailwind and DOM
+  setTimeout(() => {
+      const mountNode = doc.getElementById('print-mount');
+      if (mountNode) {
+          const root = createRoot(mountNode);
+          const logoUrl = window.location.origin + "/logo.png";
+          
+          root.render(<BudgetPDF budget={budget} logoUrl={logoUrl} />);
+          
+          // Wait for React Render & Images
+          setTimeout(() => {
+              // SET DOCUMENT TITLE FOR FILE NAMING
+              const originalTitle = document.title;
+              const safeDate = budget.date.replace(/-/g, '');
+              const safeName = budget.patientName.replace(/[^a-zA-Z0-9]/g, '_');
+              const safeStatus = budget.status.toUpperCase();
+              
+              const fileName = `ORC-${safeDate}-${safeName}-${safeStatus}`;
+              
+              // Override title on the main window (browsers often use main title for print name)
+              // And try to set it on iframe document too
+              document.title = fileName;
+              if (iframe.contentDocument) iframe.contentDocument.title = fileName;
+
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+              
+              // Restore title
+              document.title = originalTitle;
+              
+              if (onAfterPrint) onAfterPrint();
+
+              // Cleanup
+              setTimeout(() => {
+                 if (document.body.contains(iframe)) {
+                   document.body.removeChild(iframe);
+                 }
+              }, 10000);
+          }, 1500);
+      }
+  }, 500);
+};
 
 const BudgetEditor: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -36,9 +106,6 @@ const BudgetEditor: React.FC = () => {
   // Patient Search State
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
   const [showPatientSuggestions, setShowPatientSuggestions] = useState(false);
-
-  // Print Ref
-  const printComponentRef = useRef<HTMLDivElement>(null);
 
   // Initialize
   useEffect(() => {
@@ -192,25 +259,29 @@ const BudgetEditor: React.FC = () => {
       }
   };
 
-  const handleBeforePrint = async () => {
+  const handleFinalizeAndPrint = async () => {
       if (!validate()) {
           window.scrollTo({ top: 0, behavior: 'smooth' });
-          throw new Error("Validation failed");
+          return;
       }
 
       const budget = prepareBudgetForSave(true);
-      if (!budget) {
-          return Promise.reject("No patient");
-      }
+      if (!budget) return;
       
       setIsSubmitting(true);
       try {
+         // Save first
          await saveBudget(budget);
-         setIsSubmitting(false); 
+         
+         // Then Print
+         printBudget(budget, () => {
+             navigate('/budgets');
+         });
+         
+         setIsSubmitting(false);
       } catch (e) {
          alert("Erro ao guardar orçamento");
          setIsSubmitting(false);
-         throw e;
       }
   };
 
@@ -221,17 +292,6 @@ const BudgetEditor: React.FC = () => {
   const filteredPatients = patientSearchTerm 
       ? patients.filter(p => p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()))
       : patients;
-
-  const currentBudgetForPrint: Budget = prepareBudgetForSave(status === 'finalizado') || {
-      id: id || 'new',
-      patientId: selectedPatientId,
-      patientName: patients.find(p => p.id === selectedPatientId)?.name || '',
-      date: date,
-      number: (id && id !== 'new') ? (budgets.find(b => b.id === id)?.number || generateBudgetNumber()) : generateBudgetNumber(),
-      status: 'finalizado',
-      phases: phases,
-      totalValue: calculateTotal()
-  };
 
   return (
     <div className="pb-40 p-4 max-w-5xl mx-auto min-h-screen bg-gray-50">
@@ -257,21 +317,14 @@ const BudgetEditor: React.FC = () => {
                 <span>Rascunho</span>
              </button>
              
-             <ReactToPrint
-               trigger={() => (
-                   <button 
-                      disabled={isSubmitting}
-                      className="flex-[2] md:flex-none justify-center px-4 py-2.5 bg-teal-600 text-white rounded-xl font-bold text-sm hover:bg-teal-700 flex items-center gap-2 shadow-lg shadow-teal-600/20 disabled:opacity-50 active:scale-95 transition-all whitespace-nowrap"
-                   >
-                      {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
-                      <span>Finalizar & PDF</span>
-                   </button>
-               )}
-               content={() => printComponentRef.current}
-               documentTitle={`Orcamento_${date}_${selectedPatientId}`}
-               onBeforeGetContent={handleBeforePrint}
-               onAfterPrint={() => navigate('/budgets')}
-             />
+             <button 
+                onClick={handleFinalizeAndPrint}
+                disabled={isSubmitting}
+                className="flex-[2] md:flex-none justify-center px-4 py-2.5 bg-teal-600 text-white rounded-xl font-bold text-sm hover:bg-teal-700 flex items-center gap-2 shadow-lg shadow-teal-600/20 disabled:opacity-50 active:scale-95 transition-all whitespace-nowrap"
+             >
+                {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+                <span>Finalizar & PDF</span>
+             </button>
          </div>
       </header>
 
@@ -504,11 +557,6 @@ const BudgetEditor: React.FC = () => {
                  <Plus size={18} /> Adicionar Nova Fase
              </button>
          </div>
-      </div>
-
-      {/* Hidden Print Component */}
-      <div style={{ position: 'absolute', top: '-10000px', left: '-10000px' }}>
-         <BudgetPDF ref={printComponentRef} budget={currentBudgetForPrint} logoUrl={LOGO_URL} />
       </div>
 
     </div>

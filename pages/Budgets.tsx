@@ -1,25 +1,94 @@
+
 import React from 'react';
+import { createRoot } from 'react-dom/client';
 import { useData } from '../context/DataContext';
 import { Link } from 'react-router-dom';
 import { Plus, FileText, Calendar, Trash2, Printer } from 'lucide-react';
-import ReactToPrint from 'react-to-print';
 import BudgetPDF from '../components/BudgetPDF';
+import { Budget } from '../types';
+
+// Helper to print manually
+const printBudget = (budget: Budget) => {
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  
+  const doc = iframe.contentWindow?.document;
+  if (!doc) return;
+
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Orçamento ${budget.number}</title>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+           body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+           @page { margin: 0; }
+        </style>
+      </head>
+      <body>
+        <div id="print-mount"></div>
+      </body>
+    </html>
+  `);
+  doc.close();
+
+  setTimeout(() => {
+      const mountNode = doc.getElementById('print-mount');
+      if (mountNode) {
+          const root = createRoot(mountNode);
+          const logoUrl = window.location.origin + "/logo.png";
+          
+          root.render(<BudgetPDF budget={budget} logoUrl={logoUrl} />);
+          
+          setTimeout(() => {
+              // SET DOCUMENT TITLE FOR FILE NAMING
+              const originalTitle = document.title;
+              const safeDate = budget.date.replace(/-/g, '');
+              const safeName = budget.patientName.replace(/[^a-zA-Z0-9]/g, '_');
+              const safeStatus = budget.status.toUpperCase();
+              
+              const fileName = `ORC-${safeDate}-${safeName}-${safeStatus}`;
+              
+              // Override title on the main window (browsers often use main title for print name)
+              document.title = fileName;
+              if (iframe.contentDocument) iframe.contentDocument.title = fileName;
+
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+
+              // Restore title
+              document.title = originalTitle;
+
+              setTimeout(() => {
+                 if (document.body.contains(iframe)) {
+                   document.body.removeChild(iframe);
+                 }
+              }, 10000);
+          }, 1500);
+      }
+  }, 500);
+};
 
 interface BudgetRowProps {
-  budget: any;
+  budget: Budget;
   onDelete: (e: React.MouseEvent, id: string) => void;
 }
 
 const BudgetRow: React.FC<BudgetRowProps> = ({ budget, onDelete }) => {
-  const pdfRef = React.useRef<HTMLDivElement>(null);
   
+  const handlePrint = (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      printBudget(budget);
+  };
+
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:border-teal-200 transition-colors p-4 relative group">
-       {/* Hidden PDF for this item - needed for quick print */}
-       <div className="hidden">
-          <BudgetPDF ref={pdfRef} budget={budget} logoUrl="/logo.png" />
-       </div>
-
        <Link to={`/budgets/${budget.id}`} className="block">
           <div className="flex justify-between items-start">
               <div className="flex items-center gap-3">
@@ -49,19 +118,13 @@ const BudgetRow: React.FC<BudgetRowProps> = ({ budget, onDelete }) => {
            
            <div className="flex gap-2">
                {/* Quick Print Button */}
-               <ReactToPrint
-                 trigger={() => (
-                   <button 
-                     className="p-2 text-gray-300 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors" 
-                     title="Imprimir PDF"
-                     onClick={(e) => e.stopPropagation()}
-                   >
-                       <Printer size={16} />
-                   </button>
-                 )}
-                 content={() => pdfRef.current}
-                 documentTitle={`Orcamento_${budget.number}`}
-               />
+               <button 
+                 onClick={handlePrint}
+                 className="p-2 text-gray-300 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors" 
+                 title="Imprimir PDF Rápido"
+               >
+                   <Printer size={16} />
+               </button>
 
                <button 
                 onClick={(e) => onDelete(e, budget.id)}
