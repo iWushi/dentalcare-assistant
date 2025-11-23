@@ -25,14 +25,16 @@ const printBudget = (budget: Budget, onAfterPrint?: () => void) => {
   doc.open();
   doc.write(`
     <!DOCTYPE html>
-    <html>
+    <html lang="pt-PT">
       <head>
         <title>Orçamento ${budget.number}</title>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- Tailwind CDN injected for print -->
         <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
         <style>
-           body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+           body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
            @page { margin: 0; }
         </style>
       </head>
@@ -81,7 +83,7 @@ const printBudget = (budget: Budget, onAfterPrint?: () => void) => {
                    document.body.removeChild(iframe);
                  }
               }, 10000);
-          }, 1500);
+          }, 1000); // 1s delay to ensure styles apply
       }
   }, 500);
 };
