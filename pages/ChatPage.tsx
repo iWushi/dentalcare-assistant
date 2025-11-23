@@ -11,7 +11,7 @@ import { useData } from '../context/DataContext';
 const INITIAL_MESSAGE: Message = {
   id: 'init-1',
   role: Role.MODEL,
-  text: `Olá Dra. Shamila! 👋\n\nSou a **DentalCare Assistant**, pronta para gerir as suas consultas na Sommerschield.\n\n**COMO USAR:**\n\n1. **Registo rápido:** "Consulta dia 18/11, paciente João Silva, A2 e D1"\n2. **Consultar dados:** "Quanto facturei este mês?"\n3. **Gerir pacientes:** "Histórico do João Silva"\n\nComo posso ajudar hoje? 🦷`,
+  text: `Olá Mila! 👋\n\nEstou pronta para te ajudar a gerir a clínica hoje.\n\n**O que queres ver agora?**\n\n*   Registar uma consulta?\n*   Ver quanto já facturaste este mês?\n*   Resolver pendências de laboratório?\n\nDiz-me o que precisas.`,
   timestamp: new Date(),
 };
 
@@ -198,7 +198,7 @@ const ChatPage: React.FC = () => {
     } catch (error: any) {
       console.error("Chat Error:", error);
       
-      let errorMessage = "Desculpe, ocorreu um erro ao processar o seu pedido. Por favor, tente novamente.";
+      let errorMessage = "Desculpe, ocorreu um erro ao processar o teu pedido. Por favor, tenta novamente.";
       
       // Detect specific configuration errors
       const errStr = String(error?.message || error);
