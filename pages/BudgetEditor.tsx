@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { createRoot } from 'react-dom/client';
 import { useData } from '../context/DataContext';
 import { Budget, BudgetPhase, BudgetProcedure, DbPrice } from '../types';
 import { ArrowLeft, Plus, Save, Trash2, ChevronDown, ChevronUp, Printer, Search, X, Loader2, AlertCircle } from 'lucide-react';
-import BudgetPDF from '../components/BudgetPDF';
+import { DentalQuoteTemplate } from '../components/DentalQuoteTemplate';
 
 const DEFAULT_PHASES = [
   "Fase 1: Consulta e realização de exames para estudo de caso",
@@ -51,7 +50,7 @@ const printBudget = (budget: Budget, onAfterPrint?: () => void) => {
           const root = createRoot(mountNode);
           const logoUrl = window.location.origin + "/logo.png";
           
-          root.render(<BudgetPDF budget={budget} logoUrl={logoUrl} />);
+          root.render(<DentalQuoteTemplate budget={budget} logoUrl={logoUrl} />);
           
           // Wait for React Render & Images
           setTimeout(() => {

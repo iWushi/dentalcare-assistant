@@ -1,10 +1,9 @@
-
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { useData } from '../context/DataContext';
 import { Link } from 'react-router-dom';
 import { Plus, FileText, Calendar, Trash2, Printer } from 'lucide-react';
-import BudgetPDF from '../components/BudgetPDF';
+import { DentalQuoteTemplate } from '../components/DentalQuoteTemplate';
 import { Budget } from '../types';
 
 // Helper to print manually
@@ -43,7 +42,7 @@ const printBudget = (budget: Budget) => {
           const root = createRoot(mountNode);
           const logoUrl = window.location.origin + "/logo.png";
           
-          root.render(<BudgetPDF budget={budget} logoUrl={logoUrl} />);
+          root.render(<DentalQuoteTemplate budget={budget} logoUrl={logoUrl} />);
           
           setTimeout(() => {
               // SET DOCUMENT TITLE FOR FILE NAMING
