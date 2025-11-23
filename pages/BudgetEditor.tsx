@@ -14,7 +14,7 @@ const DEFAULT_PHASES = [
 ];
 
 // Helper to print manually without external libraries to avoid ESM import errors
-const printBudget = (budget: Budget, onAfterPrint?: () => void) => {
+const printBudget = (budget: Budget, patientPhone: string | undefined, onAfterPrint?: () => void) => {
   const iframe = document.createElement('iframe');
   iframe.style.display = 'none';
   document.body.appendChild(iframe);
@@ -32,7 +32,7 @@ const printBudget = (budget: Budget, onAfterPrint?: () => void) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <!-- Tailwind CDN injected for print -->
         <script src="https://cdn.tailwindcss.com"></script>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
            body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
            @page { margin: 0; }
@@ -52,7 +52,7 @@ const printBudget = (budget: Budget, onAfterPrint?: () => void) => {
           const root = createRoot(mountNode);
           const logoUrl = window.location.origin + "/logo.png";
           
-          root.render(<DentalQuoteTemplate budget={budget} logoUrl={logoUrl} />);
+          root.render(<DentalQuoteTemplate budget={budget} logoUrl={logoUrl} patientPhone={patientPhone} />);
           
           // Wait for React Render & Images
           setTimeout(() => {
@@ -274,8 +274,11 @@ const BudgetEditor: React.FC = () => {
          // Save first
          await saveBudget(budget);
          
+         // Fetch patient phone
+         const patient = patients.find(p => p.id === selectedPatientId);
+
          // Then Print
-         printBudget(budget, () => {
+         printBudget(budget, patient?.phone, () => {
              navigate('/budgets');
          });
          

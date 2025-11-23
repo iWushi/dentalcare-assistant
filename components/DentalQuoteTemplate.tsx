@@ -4,9 +4,10 @@ import { Budget } from '../types';
 interface DentalQuoteTemplateProps {
   budget: Budget;
   logoUrl?: string;
+  patientPhone?: string;
 }
 
-export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplateProps>(({ budget, logoUrl }, ref) => {
+export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplateProps>(({ budget, logoUrl, patientPhone }, ref) => {
   
   const formatMoney = (val: number) => {
     return 'MT ' + (val || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -25,9 +26,8 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
 
   return (
     <div ref={ref}>
-      {/* Estilos específicos copiados do HTML fornecido */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
         body {
             font-family: 'Inter', sans-serif;
@@ -35,8 +35,10 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
             -moz-osx-font-smoothing: grayscale;
             margin: 0;
             padding: 0;
+            color: #1e293b; /* slate-800 */
         }
 
+        /* Configuração de Base A4 para Ecrã */
         .a4-page {
             width: 210mm;
             min-height: 297mm;
@@ -44,10 +46,10 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
             background: white;
             position: relative;
             box-sizing: border-box;
-            padding: 15mm 15mm;
+            padding: 15mm 15mm; /* Margem visual no ecrã */
         }
 
-        /* Ajustes para visualização em ecrã dentro da app */
+        /* Wrapper de visualização */
         .screen-preview-wrapper {
             background-color: #f3f4f6;
             padding: 2rem 0;
@@ -59,85 +61,119 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
 
-        /* Estilos de Impressão */
+        /* --- ESTILOS DE IMPRESSÃO --- */
         @media print {
-            @page { size: A4; margin: 0; }
-            body { background-color: white; margin: 0; padding: 0; }
-            .screen-preview-wrapper { padding: 0; background: white; display: block; }
+            @page { 
+                size: A4; 
+                /* Margens definidas na página física para garantir que a 
+                   segunda página tenha margem no topo automaticamente */
+                margin: 15mm 15mm 15mm 15mm; 
+            }
+            
+            body { 
+                background-color: white; 
+                margin: 0; 
+                padding: 0; 
+            }
+            
+            .screen-preview-wrapper { 
+                padding: 0; 
+                background: white; 
+                display: block; 
+            }
+            
             .a4-page {
-                width: 100%; margin: 0; box-shadow: none; border: none; padding: 15mm;
+                width: 100%; 
+                margin: 0; 
+                box-shadow: none; 
+                border: none; 
+                /* Removemos o padding do contentor porque a @page já tem margem */
+                padding: 0; 
                 page-break-after: always;
             }
+            
             .no-print { display: none !important; }
+            
+            /* Ajuste de cores para impressão fiel */
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
 
       <div className="screen-preview-wrapper">
-        <div className="a4-page screen-preview flex flex-col justify-between text-slate-800">
+        <div className="a4-page screen-preview flex flex-col justify-between">
             
             {/* HEADER SECTION */}
             <div>
-                <header className="flex flex-row justify-between items-start mb-12">
+                <header className="flex flex-row justify-between items-start mb-10">
                     {/* Coluna Esquerda: Provider Info */}
-                    <div className="flex flex-col items-start gap-4">
-                        <div className="text-sm text-slate-600 leading-relaxed mt-4">
-                            <h1 className="text-lg font-bold text-slate-900">Shamila Modan</h1>
-                            <p className="font-medium text-slate-800">Médica Dentista</p>
-                            <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Ortodontia e Reabilitação Oral</p>
-                            <p>OMD 12345</p>
-                            <p>+258 84 616 6066 • contacto@shamilamodan.mz</p>
+                    <div className="flex flex-col items-start gap-1">
+                        <h1 className="text-xl font-bold text-slate-900 leading-tight">Shamila Modan</h1>
+                        <p className="font-semibold text-sm text-slate-800">Médica Dentista</p>
+                        
+                        <div className="mt-1 text-xs text-slate-600 leading-relaxed">
+                            <p className="uppercase tracking-wider text-[10px] text-slate-500 font-medium mb-0.5">Ortodontia e Reabilitação Oral</p>
+                            <p className="font-medium">OMD 12345</p>
+                            <p className="mt-1 text-slate-500">+258 84 616 6066 • modanshamila@gmail.com</p>
                         </div>
                     </div>
 
                     {/* Coluna Direita: Orçamento & Cliente */}
                     <div className="text-right flex flex-col items-end">
-                        <div className="mb-6">
-                            <h2 className="text-2xl font-light text-slate-900 mb-1">Orçamento</h2>
-                            <p className="text-sm font-medium text-slate-500">#{budget.number}</p>
-                            <p className="text-sm text-slate-500">Data: <span>{formattedDate}</span></p>
+                        <div className="mb-8">
+                            <h2 className="text-3xl font-light text-slate-900 mb-1">Orçamento</h2>
+                            <p className="text-xs font-medium text-slate-500 tracking-wide">#{budget.number}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">Data: <span className="font-medium text-slate-700">{formattedDate}</span></p>
                         </div>
 
-                        <div className="text-sm text-slate-600 leading-relaxed border-l-2 border-slate-100 pl-4">
-                            <p className="text-xs uppercase text-slate-400 font-semibold mb-1">Exmo(a). Sr(a).</p>
-                            <p className="font-semibold text-slate-900 text-base">{budget.patientName}</p>
-                            <p>Maputo</p>
+                        <div className="text-sm text-slate-600 border-l-2 border-slate-100 pl-4 py-0.5">
+                            <p className="text-[10px] uppercase text-slate-400 font-bold tracking-widest mb-1">EXMO(A). SR(A).</p>
+                            <p className="font-bold text-slate-900 text-base leading-tight">{budget.patientName}</p>
+                            {patientPhone ? (
+                                <p className="text-xs text-slate-500 mt-0.5">{patientPhone}</p>
+                            ) : (
+                                <p className="text-xs text-slate-500 mt-0.5">Maputo</p>
+                            )}
                         </div>
                     </div>
                 </header>
 
                 {/* MAIN CONTENT (PHASES) */}
-                <main>
+                <main className="space-y-6">
                     {budget.phases.map((phase, idx) => (
-                        <div key={idx} className="mb-8 break-inside-avoid">
-                            <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-3 border-b border-slate-200 pb-1">
+                        <div key={idx} className="break-inside-avoid">
+                            {/* Título da Fase */}
+                            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1.5 flex items-center gap-2">
                                 {phase.name}
                             </h3>
+                            
+                            {/* Tabela de Procedimentos - Fonte reduzida (~10%) */}
                             <table className="w-full text-left border-collapse">
                                 <thead>
-                                    <tr className="text-xs text-slate-500 font-medium border-b border-slate-200">
-                                        <th className="py-2 pr-4 w-3/5 font-medium">Descrição do Procedimento</th>
-                                        <th className="py-2 px-2 w-24 text-center font-medium whitespace-nowrap">Qtd.</th>
-                                        <th className="py-2 px-2 w-24 text-right font-medium whitespace-nowrap">Valor Un.</th>
-                                        <th className="py-2 pl-4 w-24 text-right font-medium whitespace-nowrap">Total</th>
+                                    <tr className="border-b border-slate-200">
+                                        {/* Cabeçalho Reduzido: text-[10px] */}
+                                        <th className="py-2 pr-4 w-[60%] font-semibold text-[10px] text-slate-500 uppercase tracking-wide">Descrição do Procedimento</th>
+                                        <th className="py-2 px-2 w-[10%] text-center font-semibold text-[10px] text-slate-500 uppercase tracking-wide">Qtd.</th>
+                                        <th className="py-2 px-2 w-[15%] text-right font-semibold text-[10px] text-slate-500 uppercase tracking-wide">Valor Un.</th>
+                                        <th className="py-2 pl-4 w-[15%] text-right font-semibold text-[10px] text-slate-500 uppercase tracking-wide">Total</th>
                                     </tr>
                                 </thead>
-                                <tbody className="text-sm text-slate-700">
+                                <tbody className="text-slate-700">
                                     {phase.procedures.map((proc, pIdx) => (
-                                        <tr key={pIdx} className="border-b border-slate-100 last:border-0">
-                                            <td className="py-3 pr-4 align-top">{proc.name}</td>
-                                            <td className="py-3 px-2 text-center align-top text-slate-500 whitespace-nowrap">{proc.quantity}</td>
-                                            <td className="py-3 px-2 text-right align-top text-slate-500 whitespace-nowrap">{formatMoney(proc.unitValue)}</td>
-                                            <td className="py-3 pl-4 text-right align-top font-medium whitespace-nowrap">{formatMoney(proc.total)}</td>
+                                        <tr key={pIdx} className="border-b border-slate-50 last:border-0">
+                                            {/* Conteúdo Reduzido: text-xs (12px) */}
+                                            <td className="py-2.5 pr-4 align-top text-xs font-medium leading-relaxed">{proc.name}</td>
+                                            <td className="py-2.5 px-2 text-center align-top text-xs text-slate-500">{proc.quantity}</td>
+                                            <td className="py-2.5 px-2 text-right align-top text-xs text-slate-500 whitespace-nowrap">{formatMoney(proc.unitValue)}</td>
+                                            <td className="py-2.5 pl-4 text-right align-top text-xs font-semibold text-slate-700 whitespace-nowrap">{formatMoney(proc.total)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot>
                                     <tr>
-                                        <td colSpan={3} className="pt-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wide">
-                                            Subtotal {phase.name.split(':')[0]}
+                                        <td colSpan={3} className="pt-2.5 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                            Subtotal Fase {idx + 1}
                                         </td>
-                                        <td className="pt-3 pl-4 text-right text-sm font-semibold text-slate-800 whitespace-nowrap">
+                                        <td className="pt-2.5 pl-4 text-right text-xs font-bold text-slate-800 whitespace-nowrap">
                                             {formatMoney(phase.subtotal)}
                                         </td>
                                     </tr>
@@ -152,17 +188,17 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
             <div className="break-inside-avoid">
                 
                 {/* TOTALS */}
-                <div className="flex justify-end mt-8 mb-12">
+                <div className="flex justify-end mt-8 mb-10">
                     <div className="w-64">
-                        <div className="flex justify-between py-2 text-sm text-slate-600 border-b border-slate-100">
-                            <span>Subtotal</span>
+                        <div className="flex justify-between py-1.5 text-xs text-slate-600 border-b border-slate-100">
+                            <span className="font-medium">Subtotal</span>
                             <span className="whitespace-nowrap">{formatMoney(subTotal)}</span>
                         </div>
-                        <div className="flex justify-between py-2 text-sm text-slate-600 border-b border-slate-100">
-                            <span>IVA (5%)</span>
+                        <div className="flex justify-between py-1.5 text-xs text-slate-600 border-b border-slate-100">
+                            <span className="font-medium">IVA (5%)</span>
                             <span className="whitespace-nowrap">{formatMoney(totalTax)}</span>
                         </div>
-                        <div className="flex justify-between py-4 text-xl font-bold text-slate-900">
+                        <div className="flex justify-between py-3 text-lg font-bold text-slate-900 items-baseline">
                             <span>Total</span>
                             <span className="whitespace-nowrap">{formatMoney(grandTotal)}</span>
                         </div>
@@ -172,9 +208,9 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
                 {/* TERMS & SIGNATURE */}
                 <footer className="mt-auto border-t border-slate-200 pt-6">
                     <div className="flex justify-between items-end">
-                        <div className="w-2/3 text-xs text-slate-400 leading-relaxed">
-                            <p className="font-medium text-slate-600 mb-1">Condições e Notas:</p>
-                            <ul className="list-disc pl-4 space-y-1">
+                        <div className="w-2/3 text-[10px] text-slate-400 leading-relaxed">
+                            <p className="font-bold text-slate-600 mb-1.5 text-xs">Condições e Notas:</p>
+                            <ul className="list-disc pl-3 space-y-1">
                                 <li>Válido por 30 dias após a data de emissão.</li>
                                 <li>O valor apresentado inclui IVA (à taxa de 5%).</li>
                                 <li>Os valores apresentados podem sofrer alterações caso surjam necessidades clínicas não detetáveis no exame inicial.</li>
@@ -182,18 +218,17 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
                             </ul>
                         </div>
                         
-                        <div className="flex flex-col items-center gap-4 w-48">
-                            <div className="w-full h-12 border-b border-dashed border-slate-300"></div>
+                        <div className="flex flex-col items-center gap-3 w-48">
+                            <div className="w-full h-8 border-b border-dashed border-slate-300"></div>
                             <div className="text-center">
-                                <p className="text-xs font-bold text-slate-800">Dra. Shamila Modan</p>
-                                <p className="text-[10px] text-slate-500">Médica Dentista</p>
-                                <p className="text-[10px] text-slate-500">Pós-Graduanda em Ortodontia</p>
+                                <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Dra. Shamila Modan</p>
+                                <p className="text-[9px] text-slate-500 uppercase tracking-wider mt-0.5">Médica Dentista</p>
                             </div>
                         </div>
                     </div>
                     
-                    <div className="text-center mt-12 text-xs font-medium text-slate-300 uppercase tracking-[0.2em]">
-                        OBRIGADO PELA SUA CONFIANÇA
+                    <div className="text-center mt-10 text-[10px] font-bold text-slate-300 uppercase tracking-[0.3em]">
+                        Obrigado pela sua confiança
                     </div>
                 </footer>
             </div>

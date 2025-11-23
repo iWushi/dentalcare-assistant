@@ -7,7 +7,7 @@ import { DentalQuoteTemplate } from '../components/DentalQuoteTemplate';
 import { Budget } from '../types';
 
 // Helper to print manually
-const printBudget = (budget: Budget) => {
+const printBudget = (budget: Budget, patientPhone: string | undefined) => {
   const iframe = document.createElement('iframe');
   iframe.style.display = 'none';
   document.body.appendChild(iframe);
@@ -24,7 +24,7 @@ const printBudget = (budget: Budget) => {
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <script src="https://cdn.tailwindcss.com"></script>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
            body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
            @page { margin: 0; }
@@ -43,7 +43,7 @@ const printBudget = (budget: Budget) => {
           const root = createRoot(mountNode);
           const logoUrl = window.location.origin + "/logo.png";
           
-          root.render(<DentalQuoteTemplate budget={budget} logoUrl={logoUrl} />);
+          root.render(<DentalQuoteTemplate budget={budget} logoUrl={logoUrl} patientPhone={patientPhone} />);
           
           setTimeout(() => {
               // SET DOCUMENT TITLE FOR FILE NAMING
@@ -76,15 +76,16 @@ const printBudget = (budget: Budget) => {
 
 interface BudgetRowProps {
   budget: Budget;
+  patientPhone?: string;
   onDelete: (e: React.MouseEvent, id: string) => void;
 }
 
-const BudgetRow: React.FC<BudgetRowProps> = ({ budget, onDelete }) => {
+const BudgetRow: React.FC<BudgetRowProps> = ({ budget, patientPhone, onDelete }) => {
   
   const handlePrint = (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      printBudget(budget);
+      printBudget(budget, patientPhone);
   };
 
   return (
@@ -139,7 +140,7 @@ const BudgetRow: React.FC<BudgetRowProps> = ({ budget, onDelete }) => {
 };
 
 const Budgets: React.FC = () => {
-  const { budgets, deleteBudget } = useData();
+  const { budgets, deleteBudget, patients } = useData();
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
       e.preventDefault();
@@ -172,9 +173,17 @@ const Budgets: React.FC = () => {
                   <p className="text-gray-400 text-sm">Crie o primeiro orçamento para começar.</p>
               </div>
           ) : (
-              budgets.map(budget => (
-                  <BudgetRow key={budget.id} budget={budget} onDelete={handleDelete} />
-              ))
+              budgets.map(budget => {
+                  const patient = patients.find(p => p.id === budget.patientId);
+                  return (
+                      <BudgetRow 
+                        key={budget.id} 
+                        budget={budget} 
+                        patientPhone={patient?.phone}
+                        onDelete={handleDelete} 
+                      />
+                  );
+              })
           )}
       </div>
     </div>
