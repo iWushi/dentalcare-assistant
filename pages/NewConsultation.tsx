@@ -91,12 +91,6 @@ const NewConsultation: React.FC = () => {
 
   // --- Handlers ---
 
-  const handleSetToday = () => {
-    setDate(getTodayStr());
-    // Auto focus patient input directly to speed up flow
-    setTimeout(() => patientInputRef.current?.focus(), 50);
-  };
-
   const handlePatientSelect = (patient: {id: string, name: string}) => {
     setSelectedPatient(patient);
     setPatientInput(patient.name);
@@ -288,22 +282,23 @@ const NewConsultation: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
            <div className="flex flex-col gap-4">
              <div>
-               <div className="flex justify-between items-end mb-1.5">
-                  <label className="text-xs font-bold text-gray-400 uppercase">Data</label>
-                  <button 
-                    onClick={handleSetToday}
-                    className="flex items-center gap-1 text-[10px] font-bold text-teal-600 bg-teal-50 px-2.5 py-1 rounded-lg hover:bg-teal-100 transition-colors"
-                  >
-                    <Calendar size={12} />
-                    HOJE
-                  </button>
+               <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Data</label>
+               <div className="relative">
+                 <input 
+                     type="date"
+                     value={date}
+                     onChange={(e) => setDate(e.target.value)}
+                     className={`w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none appearance-none transition-colors ${date === getTodayStr() ? 'text-transparent' : 'text-slate-800'}`}
+                   />
+                 {date === getTodayStr() && (
+                    <div className="absolute inset-0 flex items-center px-3 pointer-events-none">
+                        <span className="text-teal-600 font-bold flex items-center gap-2">
+                           <Calendar size={18} />
+                           Hoje
+                        </span>
+                    </div>
+                 )}
                </div>
-               <input 
-                   type="date"
-                   value={date}
-                   onChange={(e) => setDate(e.target.value)}
-                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none appearance-none"
-                 />
              </div>
              <div>
                <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Clínica</label>

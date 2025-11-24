@@ -3,24 +3,15 @@ import React from 'react';
 const AppIcon = () => {
   return (
     <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="1024" height="1024" rx="220" fill="#F8F8F8"/>
-      <defs>
-        <linearGradient id="toothGradient" x1="512" y1="200" x2="512" y2="850" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#0A8A78"/>
-          <stop offset="100%" stopColor="#1EA3A3"/>
-        </linearGradient>
-        <filter id="softShadow" x="200" y="200" width="624" height="624" filterUnits="userSpaceOnUse">
-          <feDropShadow dx="0" dy="15" stdDeviation="20" floodColor="#000000" floodOpacity="0.15"/>
-        </filter>
-      </defs>
-      
-      <g filter="url(#softShadow)">
-        <path d="M280 350C280 250 350 200 420 200H604C674 200 744 250 744 350C744 480 720 550 680 620L640 780C630 820 580 840 550 810L512 770L474 810C444 840 394 820 384 780L344 620C304 550 280 480 280 350Z" 
-              fill="url(#toothGradient)" />
+      <rect width="1024" height="1024" fill="#0D9488"/>
+      <g transform="translate(512, 512) scale(0.85) translate(-512, -512)">
+        {/* Main Tooth Outline (Stylized/Artistic) */}
+        <path d="M280 360 C280 220 380 160 512 160 C644 160 744 220 744 360 C744 520 700 600 660 680 L620 840 C610 880 560 880 550 840 L512 760 L474 840 C464 880 414 880 404 840 L364 680 C324 600 280 520 280 360 Z" 
+              stroke="white" stroke-width="50" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         
-        {/* Soft highlight for glassy feel */}
-        <path d="M320 350C320 280 370 240 420 240H604C654 240 704 280 704 350C704 420 690 480 680 500" 
-              stroke="white" strokeOpacity="0.2" strokeWidth="10" strokeLinecap="round" />
+        {/* Artistic "Smile" / Highlight Line to give it the sketch feel */}
+        <path d="M360 360 C360 360 410 300 512 300 C614 300 664 360 664 360" 
+              stroke="white" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.4"/>
       </g>
     </svg>
   );
