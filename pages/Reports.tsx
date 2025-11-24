@@ -369,14 +369,33 @@ const Reports: React.FC = () => {
     link.click();
   };
 
+  // --- NOVO TOOLTIP ENRIQUECIDO ---
   const CustomTooltipTop5 = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
+      
+      // Calcular percentagem em relação ao total deste período
+      const percent = reportData.totalCommission > 0 
+          ? ((data.value / reportData.totalCommission) * 100).toFixed(1) 
+          : '0';
+
       return (
-        <div className="bg-white p-3 rounded-xl shadow-lg border border-gray-100 text-xs z-50 text-slate-700">
-          <span className="font-bold" style={{ color: data.color }}>{data.name}</span>
-          <span className="mx-1.5 text-gray-300">—</span>
-          <span className="font-bold text-slate-700">{formatMoney(data.value)}</span>
+        <div className="bg-slate-800 p-4 rounded-xl shadow-xl border border-slate-700 z-50 max-w-[240px]">
+          {/* Header with Color Dot */}
+          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-700">
+             <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: data.color }}></div>
+             <span className="font-bold text-slate-100 text-sm">{data.name}</span>
+          </div>
+          
+          {/* Main Value */}
+          <div className="mb-2">
+             <span className="text-2xl font-bold text-white tracking-tight">{formatMoney(data.value)}</span>
+          </div>
+
+          {/* Contextual Sentence */}
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+             Corresponde a <strong className="text-teal-400">{percent}%</strong> de toda a tua facturação neste período.
+          </p>
         </div>
       );
     }
@@ -471,9 +490,25 @@ const Reports: React.FC = () => {
       <section className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
         <div className="flex justify-between items-start mb-2">
             <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Líquido</span>
-            <div className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border ${reportData.isPositive ? 'bg-teal-900/50 text-teal-400 border-teal-800/50' : 'bg-red-900/50 text-red-400 border-red-800/50'}`}>
-              {reportData.isPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-              {filterType === 'month' ? `${Math.abs(reportData.variation)}%` : '--'}
+            
+            {/* TOOLTIP CONTAINER */}
+            <div className="relative group cursor-help">
+                <div className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border ${reportData.isPositive ? 'bg-teal-900/50 text-teal-400 border-teal-800/50' : 'bg-red-900/50 text-red-400 border-red-800/50'}`}>
+                    {reportData.isPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                    <span>{filterType === 'month' ? `${Math.abs(reportData.variation)}%` : '--'}</span>
+                    {filterType === 'month' && <Info size={10} className="text-current opacity-50 ml-1" />}
+                </div>
+
+                {/* TOOLTIP CONTENT */}
+                {filterType === 'month' && (
+                    <div className="absolute right-0 top-full mt-2 w-48 p-3 bg-white text-slate-600 text-[10px] rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                        <div className="absolute -top-1 right-3 w-2 h-2 bg-white rotate-45"></div>
+                        <p className="font-bold text-slate-800 mb-1 uppercase tracking-wide">Variação Mensal</p>
+                        <p className="leading-relaxed">
+                            Comparação directa com o total facturado no mês anterior.
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
           

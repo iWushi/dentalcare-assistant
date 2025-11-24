@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +15,7 @@ const Dashboard: React.FC = () => {
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
   const todayStr = now.toISOString().split('T')[0];
+  const todayDay = now.getDate();
   
   const { 
     totalCommission, 
@@ -52,7 +54,6 @@ const Dashboard: React.FC = () => {
     const remainingGoal = Math.max(0, OBJETIVO_MENSAL - totalCommission);
 
     // Variação Mês Anterior (até ao dia de hoje)
-    const todayDay = now.getDate(); 
     let prevMonth = currentMonth - 1;
     let prevYear = currentYear;
     if (prevMonth === 0) { prevMonth = 12; prevYear = currentYear - 1; }
@@ -89,7 +90,7 @@ const Dashboard: React.FC = () => {
         variation,
         recentConsultations
     };
-  }, [consultations, currentYear, currentMonth]);
+  }, [consultations, currentYear, currentMonth, todayDay]);
 
   const formatMoney = (val: number) => {
      return (val || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' MT';
@@ -123,17 +124,28 @@ const Dashboard: React.FC = () => {
         Nova Consulta
       </Link>
 
-      <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+      <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm overflow-visible z-10 relative">
         <div className="flex justify-between items-start mb-4">
             <div className="flex items-center gap-2 text-gray-500 text-sm">
                 <Calendar size={16} />
                 <span>Este Mês</span>
             </div>
-            <div className="relative group">
+            
+            {/* TOOLTIP CONTAINER */}
+            <div className="relative group cursor-help">
               <div className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg border ${variation >= 0 ? 'bg-teal-50 text-teal-600 border-teal-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
                   {variation >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
                   <span>{Math.abs(variation)}%</span>
                   <Info size={10} className="text-current opacity-50 ml-1" />
+              </div>
+
+              {/* TOOLTIP CONTENT */}
+              <div className="absolute right-0 top-full mt-2 w-48 p-3 bg-slate-800 text-white text-[10px] rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                  <div className="absolute -top-1 right-3 w-2 h-2 bg-slate-800 rotate-45"></div>
+                  <p className="font-bold text-slate-200 mb-1 uppercase tracking-wide">Variação Homóloga</p>
+                  <p className="text-slate-300 leading-relaxed">
+                    Compara a tua facturação de <strong>1 a {todayDay} deste mês</strong> com o mesmo período do mês passado.
+                  </p>
               </div>
             </div>
         </div>

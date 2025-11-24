@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { ArrowLeft, Plus, Trash2, Search, Save, UserPlus, X, ChevronDown, Ban, FlaskConical } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Search, Save, UserPlus, X, ChevronDown, Ban, FlaskConical, Calendar, ArrowDown } from 'lucide-react';
 import { CLINICS } from '../constants';
 import { Procedure, Consultation, Clinic } from '../types';
 
@@ -25,6 +26,7 @@ const NewConsultation: React.FC = () => {
   const procedureInputRef = useRef<HTMLInputElement>(null);
   const notesInputRef = useRef<HTMLTextAreaElement>(null);
   const patientInputRef = useRef<HTMLInputElement>(null);
+  const clinicSelectRef = useRef<HTMLSelectElement>(null);
 
   // --- Form State ---
   const [date, setDate] = useState(getTodayStr());
@@ -89,9 +91,16 @@ const NewConsultation: React.FC = () => {
 
   // --- Handlers ---
 
+  const handleSetToday = () => {
+    setDate(getTodayStr());
+    // Auto focus patient input directly to speed up flow
+    setTimeout(() => patientInputRef.current?.focus(), 50);
+  };
+
   const handlePatientSelect = (patient: {id: string, name: string}) => {
     setSelectedPatient(patient);
     setPatientInput(patient.name);
+    // Auto focus procedure input
     setTimeout(() => procedureInputRef.current?.focus(), 100);
   };
 
@@ -147,6 +156,7 @@ const NewConsultation: React.FC = () => {
     };
     setSelectedProcedures([...selectedProcedures, newProc]);
     setProcedureInput('');
+    // Keep focus on procedure input to allow adding multiple
     setTimeout(() => procedureInputRef.current?.focus(), 50);
   };
 
@@ -278,7 +288,16 @@ const NewConsultation: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
            <div className="flex flex-col gap-4">
              <div>
-               <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Data</label>
+               <div className="flex justify-between items-end mb-1.5">
+                  <label className="text-xs font-bold text-gray-400 uppercase">Data</label>
+                  <button 
+                    onClick={handleSetToday}
+                    className="flex items-center gap-1 text-[10px] font-bold text-teal-600 bg-teal-50 px-2.5 py-1 rounded-lg hover:bg-teal-100 transition-colors"
+                  >
+                    <Calendar size={12} />
+                    HOJE
+                  </button>
+               </div>
                <input 
                    type="date"
                    value={date}
@@ -290,6 +309,7 @@ const NewConsultation: React.FC = () => {
                <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Clínica</label>
                <div className="relative">
                   <select 
+                    ref={clinicSelectRef}
                     value={clinic}
                     onChange={(e) => setClinic(e.target.value as Clinic)}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none appearance-none"
@@ -372,35 +392,46 @@ const NewConsultation: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
            <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">Procedimentos</label>
            
-           <div className="relative mb-2">
-              <input
-                ref={procedureInputRef}
-                type="text"
-                value={procedureInput}
-                onChange={(e) => setProcedureInput(e.target.value)}
-                onKeyDown={handleProcedureKeyDown}
-                placeholder="Código ou descrição (ex: A2)"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-base focus:ring-2 focus:ring-teal-500 focus:outline-none placeholder:text-gray-400"
-              />
-              <Plus className="absolute left-3.5 top-4 text-gray-400 w-5 h-5" />
-              
-              {procedureSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-10 max-h-64 overflow-y-auto">
-                   {procedureSuggestions.map((p) => (
-                     <button
-                       key={p.id}
-                       onClick={() => handleAddProcedure(p)}
-                       className="w-full text-left px-5 py-4 hover:bg-gray-50 border-b border-gray-50 last:border-0 flex justify-between items-center active:bg-gray-100 transition-colors"
-                     >
-                       <div>
-                         <span className="font-bold text-teal-600 mr-2 text-base">{p.id}</span>
-                         <span className="text-slate-700 text-base">{p.descricao}</span>
-                       </div>
-                       <div className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">{formatMoney(p.valor_com_iva)}</div>
-                     </button>
-                   ))}
-                </div>
-              )}
+           <div className="flex gap-2 mb-2">
+              <div className="relative flex-1">
+                  <input
+                    ref={procedureInputRef}
+                    type="text"
+                    value={procedureInput}
+                    onChange={(e) => setProcedureInput(e.target.value)}
+                    onKeyDown={handleProcedureKeyDown}
+                    placeholder="Cód ou nome (ex: A2)"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-3.5 text-base focus:ring-2 focus:ring-teal-500 focus:outline-none placeholder:text-gray-400"
+                  />
+                  <Plus className="absolute left-3 top-4 text-gray-400 w-5 h-5" />
+                  
+                  {procedureSuggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-10 max-h-64 overflow-y-auto">
+                      {procedureSuggestions.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => handleAddProcedure(p)}
+                          className="w-full text-left px-5 py-4 hover:bg-gray-50 border-b border-gray-50 last:border-0 flex justify-between items-center active:bg-gray-100 transition-colors"
+                        >
+                          <div>
+                            <span className="font-bold text-teal-600 mr-2 text-base">{p.id}</span>
+                            <span className="text-slate-700 text-base">{p.descricao}</span>
+                          </div>
+                          <div className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">{formatMoney(p.valor_com_iva)}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+              </div>
+
+              {/* Mobile Next Button to Skip to Notes */}
+              <button
+                onClick={() => notesInputRef.current?.focus()}
+                className="bg-gray-100 text-gray-500 px-4 rounded-xl border border-gray-200 hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center"
+                title="Saltar para Observações"
+              >
+                  <ArrowDown size={20} />
+              </button>
            </div>
 
            {topProcedures.length > 0 && (
@@ -462,6 +493,7 @@ const NewConsultation: React.FC = () => {
                                 <FlaskConical size={16} className="text-teal-500" />
                                 <input 
                                     type="text"
+                                    inputMode="decimal"
                                     placeholder="000 000,00"
                                     value={proc.labCost ? formatMoney(proc.labCost).replace(' MT', '') : ''}
                                     onChange={(e) => updateProcedureLabCost(idx, e.target.value)}
