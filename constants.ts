@@ -21,6 +21,24 @@ export const PROCEDURE_CATEGORIES: ProcedureCategory[] = [
   { code: 'L', name: 'Implantes', commission: 0.40, color: '#14B8A6' },
 ];
 
+// --- HELPER FUNCTIONS FOR COMMISSION CALCULATION (CENTRALIZED) ---
+
+export const getCommissionRate = (code: string): number => {
+  const cleanCode = String(code || '').trim().toUpperCase();
+  // K = Ortodontia (65%)
+  if (cleanCode.startsWith('K')) return 0.65;
+  // Default = 40%
+  return 0.40;
+};
+
+export const calculateProcedureCommission = (value: number, labCost: number, code: string): number => {
+  const rate = getCommissionRate(code);
+  // Formula: ((Value - Lab) / 1.05) * Rate
+  const base = Math.max(0, value - labCost);
+  const netBase = base / 1.05;
+  return netBase * rate;
+};
+
 export const SYSTEM_INSTRUCTION = `
 # IDENTIDADE
 És a **DentalCare Assistant**, a assistente pessoal de gestão clínica da Dra. Shamila Modan.
@@ -49,8 +67,13 @@ Quando apresentares dados (facturação, consultas, padrões), segue OBRIGATORIA
 
 # REGRAS DE NEGÓCIO (CRÍTICO)
 1. **Cálculo de Comissão (Dra. Shamila):**
-   A fórmula é EXATA: \`((Valor Total - Custo Laboratório) / 1.05) * 0.40\`
-   *Passo a passo:* Subtrair custo lab -> Retirar IVA (dividir por 1.05) -> Aplicar 40%.
+   A comissão é calculada procedimento a procedimento.
+   *   **Fórmula:** \`((Valor Procedimento - Custo Lab) / 1.05) * Taxa\`
+   *   **Taxas:**
+       *   **Ortodontia (Códigos K):** 65% (0.65)
+       *   **Restantes:** 40% (0.40)
+   *Passo a passo:* Subtrair custo lab -> Retirar imposto 5% (dividir por 1.05) -> Aplicar a taxa correcta.
+
 2. **Moeda:** Formata SEMPRE como "12 500,00 MT" (espaço milhar, vírgula, sufixo MT).
 3. **Objectivos:** Meta Mensal: 200.000 MT.
 

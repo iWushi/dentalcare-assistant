@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { ArrowLeft, Plus, Trash2, Search, Save, UserPlus, X, ChevronDown, Ban, FlaskConical, Calendar, ArrowDown } from 'lucide-react';
-import { CLINICS } from '../constants';
+import { CLINICS, calculateProcedureCommission } from '../constants';
 import { Procedure, Consultation, Clinic } from '../types';
 
 // Helper for local date string YYYY-MM-DD
@@ -44,15 +44,22 @@ const NewConsultation: React.FC = () => {
   const [submissionSuccess, setSubmissionSuccess] = useState<{id: string, value: number} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- NEW CALCULATION LOGIC ---
-  // Formula: ((Total Gross - Total Lab) / 1.05) * 0.40
+  // --- NEW CALCULATION LOGIC (Mixed Rates) ---
   const totals = useMemo(() => {
-    const totalGross = selectedProcedures.reduce((sum, p) => sum + (p.value || 0), 0);
-    const totalLab = selectedProcedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
-    
-    const baseCalc = Math.max(0, totalGross - totalLab);
-    const valueWithoutIva = baseCalc / 1.05;
-    const totalCommission = valueWithoutIva * 0.40;
+    let totalGross = 0;
+    let totalLab = 0;
+    let totalCommission = 0;
+
+    selectedProcedures.forEach(p => {
+        const val = p.value || 0;
+        const lab = p.labCost || 0;
+        totalGross += val;
+        totalLab += lab;
+        
+        const code = String(p.code || '').trim().toUpperCase();
+        // Uses centralized logic to guarantee consistency with DB
+        totalCommission += calculateProcedureCommission(val, lab, code);
+    });
 
     return { totalGross, totalLab, totalCommission };
   }, [selectedProcedures]);
@@ -540,12 +547,13 @@ const NewConsultation: React.FC = () => {
                 </div>
               )}
               <div className="flex justify-between items-center pt-2">
-                 <span className="font-bold text-slate-800">Comissão (40%)</span>
+                 <span className="font-bold text-slate-800">Comissão Estimada</span>
                  <span className="text-2xl font-bold text-teal-600">{formatMoney(totals.totalCommission)}</span>
               </div>
-              <p className="text-[10px] text-gray-400 text-right">
-                *Fórmula: ((Total - Lab) / 1.05) x 0.40
-              </p>
+              <div className="text-[10px] text-gray-400 text-right leading-tight mt-1">
+                <p className="font-medium">*Base de cálculo: ((Valor - Lab) ÷ 1.05) × Taxa</p>
+                <p className="mt-0.5">Códigos <strong className="text-indigo-500">K</strong> (Ortodontia): <span className="font-bold text-slate-600">65%</span> | Restantes: <span className="font-bold text-slate-600">40%</span></p>
+              </div>
            </div>
         </div>
       </div>

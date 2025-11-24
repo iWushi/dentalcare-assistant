@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { Search, Calendar, Edit2, Trash2, X, Save, Filter, FlaskConical, Plus } from 'lucide-react';
-import { CLINICS } from '../constants';
+import { CLINICS, calculateProcedureCommission } from '../constants';
 import { Clinic, Consultation, Procedure, DbPrice } from '../types';
 import { useLocation } from 'react-router-dom';
 
@@ -71,18 +72,22 @@ const Consultations: React.FC = () => {
     );
   }, [procSearchTerm, availableProcedures]);
 
-  // Calculate new commission: ((Total - Lab) / 1.05) * 0.40
+  // Calculate new commission: ((Total - Lab) / 1.05) * Rate (65% for K, 40% others)
   const calculateTotals = (procedures: Procedure[]) => {
     let totalGross = 0;
     let totalLab = 0;
+    let comm = 0;
     
     procedures.forEach(p => {
-        totalGross += (p.value || 0);
-        totalLab += (p.labCost || 0);
+        const val = p.value || 0;
+        const lab = p.labCost || 0;
+        totalGross += val;
+        totalLab += lab;
+
+        const code = String(p.code || '').trim().toUpperCase();
+        // Uses centralized logic
+        comm += calculateProcedureCommission(val, lab, code);
     });
-    
-    const base = Math.max(0, totalGross - totalLab);
-    const comm = (base / 1.05) * 0.40;
 
     return { totalGross, comm, totalLab };
   };
@@ -94,11 +99,14 @@ const Consultations: React.FC = () => {
     // Deep copy procedures to avoid mutating context state directly
     const proceduresCopy = c.procedures.map(p => ({...p}));
     
+    // CRÍTICO: Recalcular totais IMEDIATAMENTE ao abrir para corrigir valores antigos
+    const { totalGross, comm } = calculateTotals(proceduresCopy);
+
     setEditForm({
        date: c.date,
        clinic: c.clinic,
-       totalValue: c.totalValue,
-       doctorCommission: c.doctorCommission,
+       totalValue: totalGross, // Garante que o total bate certo com os procedimentos
+       doctorCommission: comm, // Usa o valor recalculado (65% se for K), ignorando o valor antigo da BD
        notes: c.notes,
        procedures: proceduresCopy
     });

@@ -1,6 +1,8 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Patient, Consultation, DbPrice, Procedure, Budget } from '../types';
 import { supabase } from '../services/supabase';
+import { calculateProcedureCommission } from '../constants';
 
 interface DataContextType {
   patients: Patient[];
@@ -266,15 +268,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const totalLabCost = consultation.procedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
       
       const procedimentosJson = consultation.procedures.map(p => ({
-          codigo: p.code,
+          codigo: p.code ? p.code.trim() : '',
           descricao: p.name,
           tem_lab: p.isLabPending || false,
           valor: p.value 
       }));
       
+      // Mixed Commission Calculation (Centralized)
+      let totalCommission = 0;
+      consultation.procedures.forEach(p => {
+          const val = p.value || 0;
+          const lab = p.labCost || 0;
+          const code = String(p.code || '').trim().toUpperCase();
+          
+          totalCommission += calculateProcedureCommission(val, lab, code);
+      });
+
+      // Valor sem IVA estimado (apenas informativo para BD, o real da comissão é o totalCommission)
       const baseCalc = Math.max(0, consultation.totalValue - totalLabCost);
       const valorSemIva = baseCalc / 1.05;
-      const valorFinalDra = valorSemIva * 0.40;
 
       const dbPayload = {
         id: consultation.id,
@@ -286,7 +298,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         valor_total: consultation.totalValue,
         custo_lab: totalLabCost,
         valor_sem_iva: valorSemIva,
-        valor_final_dra: valorFinalDra,
+        valor_final_dra: totalCommission, // Stores the precise calculated commission
         observacoes: consultation.notes || '',
         criado_em: new Date().toISOString()
       };
@@ -297,7 +309,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) throw error;
       
-      const newConsLocal = { ...consultation, doctorCommission: valorFinalDra, hasPendingLab: (totalLabCost === 0 && consultation.procedures.some(p => p.isLabPending)) };
+      const newConsLocal = { 
+        ...consultation, 
+        doctorCommission: totalCommission, 
+        hasPendingLab: (totalLabCost === 0 && consultation.procedures.some(p => p.isLabPending)) 
+      };
       setConsultations(prev => [newConsLocal, ...prev]);
       
     } catch (err: any) {
@@ -319,17 +335,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (updates.procedures || updates.totalValue !== undefined) {
           const totalLabCost = mergedProcedures.reduce((sum, p) => sum + (p.labCost || 0), 0);
+          
+          // Mixed Commission Calculation (Centralized)
+          let totalCommission = 0;
+          mergedProcedures.forEach(p => {
+              const val = p.value || 0;
+              const lab = p.labCost || 0;
+              const code = String(p.code || '').trim().toUpperCase();
+              
+              totalCommission += calculateProcedureCommission(val, lab, code);
+          });
+
           const baseCalc = Math.max(0, mergedTotalValue - totalLabCost);
           const valorSemIva = baseCalc / 1.05;
-          const valorFinalDra = valorSemIva * 0.40;
 
           dbUpdates.valor_total = mergedTotalValue;
           dbUpdates.custo_lab = totalLabCost;
           dbUpdates.valor_sem_iva = valorSemIva;
-          dbUpdates.valor_final_dra = valorFinalDra;
+          dbUpdates.valor_final_dra = totalCommission;
 
           dbUpdates.procedimentos = mergedProcedures.map(p => ({
-             codigo: p.code,
+             codigo: p.code ? p.code.trim() : '',
              descricao: p.name,
              tem_lab: p.isLabPending || false,
              valor: p.value
