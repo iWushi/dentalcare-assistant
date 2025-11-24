@@ -1,4 +1,3 @@
-
 export enum Role {
   USER = 'user',
   MODEL = 'model',
@@ -67,6 +66,10 @@ export interface Consultation {
   doctorCommission: number; // Mapeado para valor_final_dra
   hasPendingLab: boolean; // Calculado via JSONB
   notes?: string; // Mapeado para observacoes
+  
+  // New Reminder Fields
+  reminder?: string; // Mapped to 'lembrete' column
+  hasReminder?: boolean; // Computed based on reminder text
 }
 
 // --- NOVOS TIPOS PARA ORÇAMENTOS ---

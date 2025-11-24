@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Patient, Consultation, DbPrice, Procedure, Budget } from '../types';
 import { supabase } from '../services/supabase';
@@ -139,6 +138,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const safeDoctorCommission = parseCurrency(c.valor_final_dra);
           const safeDate = normalizeDate(c.data);
           const safeLabCost = parseCurrency(c.custo_lab); // Coluna custo_lab
+          const reminderText = c.lembrete || ''; // Coluna lembrete
 
           // Parse JSONB Procedures
           let rawProcs = c.procedimentos;
@@ -215,7 +215,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             totalValue: safeTotalValue,
             doctorCommission: safeDoctorCommission,
             hasPendingLab: isPending,
-            notes: c.observacoes
+            notes: c.observacoes,
+            reminder: reminderText,
+            hasReminder: reminderText.length > 0
           };
         });
 
@@ -300,6 +302,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         valor_sem_iva: valorSemIva,
         valor_final_dra: totalCommission, // Stores the precise calculated commission
         observacoes: consultation.notes || '',
+        lembrete: consultation.reminder || null, // New Reminder Column
         criado_em: new Date().toISOString()
       };
 
@@ -309,10 +312,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) throw error;
       
-      const newConsLocal = { 
+      const newConsLocal: Consultation = { 
         ...consultation, 
         doctorCommission: totalCommission, 
-        hasPendingLab: (totalLabCost === 0 && consultation.procedures.some(p => p.isLabPending)) 
+        hasPendingLab: (totalLabCost === 0 && consultation.procedures.some(p => p.isLabPending)),
+        hasReminder: !!consultation.reminder
       };
       setConsultations(prev => [newConsLocal, ...prev]);
       
@@ -366,6 +370,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.clinic) dbUpdates.clinica = updates.clinic;
       if (updates.patientName) dbUpdates.paciente_nome = updates.patientName;
       if (updates.notes !== undefined) dbUpdates.observacoes = updates.notes;
+      
+      // Handle Reminder Update
+      if (updates.reminder !== undefined) {
+          dbUpdates.lembrete = updates.reminder || null;
+      }
 
       const { error } = await supabase
         .from('consultas')
@@ -385,6 +394,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const hasLabItems = (updates.procedures || c.procedures).some(p => p.isLabPending);
               updated.hasPendingLab = hasLabItems && (labCost === 0);
           }
+          
+          if (updates.reminder !== undefined) {
+              updated.hasReminder = !!updates.reminder;
+          }
+
           return updated;
       }));
 

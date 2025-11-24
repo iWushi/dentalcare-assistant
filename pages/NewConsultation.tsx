@@ -1,8 +1,7 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { ArrowLeft, Plus, Trash2, Search, Save, UserPlus, X, ChevronDown, Ban, FlaskConical, Calendar, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Search, Save, UserPlus, X, ChevronDown, Ban, FlaskConical, Calendar, ArrowDown, Bell } from 'lucide-react';
 import { CLINICS, calculateProcedureCommission } from '../constants';
 import { Procedure, Consultation, Clinic } from '../types';
 
@@ -36,6 +35,10 @@ const NewConsultation: React.FC = () => {
   const [procedureInput, setProcedureInput] = useState('');
   const [selectedProcedures, setSelectedProcedures] = useState<Procedure[]>([]);
   const [notes, setNotes] = useState('');
+  
+  // --- Reminder State ---
+  const [isReminderActive, setIsReminderActive] = useState(false);
+  const [reminderText, setReminderText] = useState('');
   
   // --- UI State ---
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -204,7 +207,9 @@ const NewConsultation: React.FC = () => {
       totalValue: totals.totalGross,
       doctorCommission: totals.totalCommission,
       hasPendingLab: false, // Calculated by context
-      notes: notes
+      notes: notes,
+      reminder: isReminderActive ? reminderText : undefined,
+      hasReminder: isReminderActive
     };
 
     await addConsultation(newConsultation);
@@ -220,6 +225,8 @@ const NewConsultation: React.FC = () => {
     setSelectedProcedures([]);
     setNotes('');
     setSubmissionSuccess(null);
+    setIsReminderActive(false);
+    setReminderText('');
   };
 
   const patientSuggestions = patientInput.length > 0 && !selectedPatient
@@ -523,8 +530,45 @@ const NewConsultation: React.FC = () => {
            </div>
         </div>
 
-        {/* 4. Summary & Notes */}
+        {/* 4. Summary & Notes (Including Reminder Toggle) */}
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+           
+           {/* Lembrete Section */}
+           <div className="mb-4 pb-4 border-b border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase">
+                        <Bell size={14} />
+                        Definir Lembrete
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <div className={`w-8 h-5 rounded-full transition-colors relative ${isReminderActive ? 'bg-teal-500' : 'bg-gray-300'}`}>
+                            <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform ${isReminderActive ? 'translate-x-3' : ''}`}></div>
+                        </div>
+                        <input 
+                            type="checkbox" 
+                            checked={isReminderActive} 
+                            onChange={(e) => {
+                                setIsReminderActive(e.target.checked);
+                                if(!e.target.checked) setReminderText('');
+                            }}
+                            className="hidden"
+                        />
+                    </label>
+                </div>
+                
+                {isReminderActive && (
+                    <div className="animate-in slide-in-from-top-2">
+                        <input
+                            type="text"
+                            placeholder="Ex: Ligar para marcar controlo em 3 dias"
+                            value={reminderText}
+                            onChange={(e) => setReminderText(e.target.value)}
+                            className="w-full bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 text-sm focus:ring-2 focus:ring-amber-500/50 focus:outline-none placeholder:text-amber-400"
+                        />
+                    </div>
+                )}
+           </div>
+
            <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">Observações</label>
            <textarea
              ref={notesInputRef}

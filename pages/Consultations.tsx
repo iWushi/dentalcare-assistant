@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
-import { Search, Calendar, Edit2, Trash2, X, Save, Filter, FlaskConical, Plus } from 'lucide-react';
+import { Search, Calendar, Edit2, Trash2, X, Save, Filter, FlaskConical, Plus, Bell } from 'lucide-react';
 import { CLINICS, calculateProcedureCommission } from '../constants';
 import { Clinic, Consultation, Procedure, DbPrice } from '../types';
 import { useLocation } from 'react-router-dom';
@@ -108,7 +107,9 @@ const Consultations: React.FC = () => {
        totalValue: totalGross, // Garante que o total bate certo com os procedimentos
        doctorCommission: comm, // Usa o valor recalculado (65% se for K), ignorando o valor antigo da BD
        notes: c.notes,
-       procedures: proceduresCopy
+       procedures: proceduresCopy,
+       reminder: c.reminder,
+       hasReminder: c.hasReminder
     });
   };
 
@@ -171,8 +172,13 @@ const Consultations: React.FC = () => {
     if (!editingId || !editForm) return;
     setIsSaving(true);
     try {
+       // Ensure consistency
+       const reminderText = editForm.hasReminder ? editForm.reminder : '';
+       
        await updateConsultation(editingId, {
-           ...editForm
+           ...editForm,
+           reminder: reminderText,
+           hasReminder: editForm.hasReminder
        });
        setEditingId(null);
     } catch (e) {
@@ -369,6 +375,35 @@ const Consultations: React.FC = () => {
                                <div className="font-bold text-teal-600 text-lg">{formatMoney(editForm.doctorCommission || 0)} MT</div>
                             </div>
                          </div>
+
+                         {/* REMINDER TOGGLE IN EDIT */}
+                         <div className="mb-4 bg-white p-3 rounded-lg border border-gray-200">
+                            <label className="flex items-center justify-between cursor-pointer mb-2">
+                                <span className="text-sm font-bold text-gray-600 flex items-center gap-2">
+                                    <Bell size={16} /> Lembrete / Follow-up
+                                </span>
+                                <div className={`w-10 h-6 rounded-full transition-colors relative ${editForm.hasReminder ? 'bg-teal-500' : 'bg-gray-300'}`}>
+                                    <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${editForm.hasReminder ? 'translate-x-4' : ''}`}></div>
+                                </div>
+                                <input 
+                                    type="checkbox" 
+                                    className="hidden"
+                                    checked={editForm.hasReminder || false}
+                                    onChange={(e) => setEditForm(prev => ({...prev, hasReminder: e.target.checked}))}
+                                />
+                            </label>
+                            {editForm.hasReminder && (
+                                <div className="animate-in slide-in-from-top-2">
+                                    <input 
+                                        type="text"
+                                        placeholder="Escreva o lembrete..."
+                                        value={editForm.reminder || ''}
+                                        onChange={(e) => setEditForm(prev => ({...prev, reminder: e.target.value}))}
+                                        className="w-full border border-amber-200 bg-amber-50 text-amber-900 rounded-lg p-2 text-sm outline-none"
+                                    />
+                                </div>
+                            )}
+                         </div>
                          
                          <div className="flex justify-end gap-3">
                             <button onClick={() => setEditingId(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
@@ -403,11 +438,19 @@ const Consultations: React.FC = () => {
                                    </span>
                                ))}
                             </div>
-                            {cons.hasPendingLab && (
-                                <div className="mt-2 text-xs font-bold text-amber-500 flex items-center gap-1 animate-pulse bg-amber-50 px-2 py-1 rounded-md w-max border border-amber-100">
-                                    <FlaskConical size={12} /> Lab Pendente: Custo em falta!
-                                </div>
-                            )}
+                            {/* FLAGS */}
+                            <div className="flex flex-col gap-1 mt-2">
+                                {cons.hasPendingLab && (
+                                    <div className="text-xs font-bold text-amber-500 flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md w-max border border-amber-100">
+                                        <FlaskConical size={12} /> Lab Pendente
+                                    </div>
+                                )}
+                                {cons.hasReminder && (
+                                    <div className="text-xs font-bold text-indigo-500 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-md w-max border border-indigo-100">
+                                        <Bell size={12} /> {cons.reminder || 'Lembrete'}
+                                    </div>
+                                )}
+                            </div>
                          </div>
                          
                          <div className="flex items-center gap-6 w-full md:w-auto justify-between">
