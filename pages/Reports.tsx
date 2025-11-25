@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { 
@@ -430,7 +429,7 @@ const Reports: React.FC = () => {
 
            <button 
               onClick={generateCSV}
-              className="hidden md:flex bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs items-center justify-center gap-2 shadow-lg hover:bg-slate-700"
+              className="bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs items-center justify-center gap-2 shadow-lg hover:bg-slate-700 flex"
             >
               <Download size={16} />
               <span>Exportar CSV</span>
