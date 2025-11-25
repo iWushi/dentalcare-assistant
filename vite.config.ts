@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-  // Carrega variáveis de ambiente. O terceiro argumento '' carrega TODAS as variáveis, não apenas as que começam por VITE_
+  // Carrega variáveis de ambiente. O terceiro argumento '' carrega TODAS as variáveis
   const env = loadEnv(mode, (process as any).cwd(), '');
   
   // Tenta encontrar a chave em várias fontes possíveis para ser à prova de falhas
@@ -16,7 +16,29 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      sourcemap: false
+      sourcemap: false,
+      // Increase chunk size warning limit to reduce noise for large vendors
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // Split React and ReactDOM
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            // Split Charting library which is heavy
+            'charts': ['recharts'],
+            // Split Markdown rendering
+            'markdown': ['react-markdown'],
+            // Split Icons
+            'icons': ['lucide-react'],
+            // Split Google GenAI SDK
+            'genai': ['@google/genai'],
+            // Split Supabase SDK
+            'supabase': ['@supabase/supabase-js'],
+            // Split PDF generation
+            'print': ['react-to-print']
+          }
+        }
+      }
     }
   };
 });
