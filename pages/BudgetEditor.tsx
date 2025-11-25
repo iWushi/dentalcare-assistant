@@ -3,14 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { createRoot } from 'react-dom/client';
 import { useData } from '../context/DataContext';
 import { Budget, BudgetPhase, BudgetProcedure, DbPrice } from '../types';
-import { ArrowLeft, Plus, Save, Trash2, ChevronDown, ChevronUp, Printer, Search, X, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Trash2, ChevronDown, ChevronUp, Printer, Search, X, Loader2, AlertCircle, Percent, Tag } from 'lucide-react';
 import { DentalQuoteTemplate } from '../components/DentalQuoteTemplate';
 
 const DEFAULT_PHASES = [
   "Fase 1: Consulta e realização de exames para estudo de caso",
   "Fase 2: Montagem do aparelho fixo",
   "Fase 3: Controlos para activação e manutenção do aparelho fixo",
-  "Fase 4: Remoção e confeção do aparelho de contenção"
+  "Fase 4: Remoção e confecção do aparelho de contenção"
 ];
 
 // Helper to print manually without external libraries to avoid ESM import errors
@@ -103,6 +103,10 @@ const BudgetEditor: React.FC = () => {
   const [procSearchTerm, setProcSearchTerm] = useState('');
   const [activePhaseIdx, setActivePhaseIdx] = useState<number | null>(0);
   const [formErrors, setFormErrors] = useState<string[]>([]);
+  
+  // Discount State
+  const [showDiscountModule, setShowDiscountModule] = useState(false);
+  const [discountPercentage, setDiscountPercentage] = useState<number>(0);
 
   // Patient Search State
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
@@ -118,6 +122,12 @@ const BudgetEditor: React.FC = () => {
           setPatientSearchTerm(existing.patientName);
           setStatus(existing.status);
           setPhases(existing.phases);
+          
+          // Initialize discount
+          if (existing.discountPercentage && existing.discountPercentage > 0) {
+              setDiscountPercentage(existing.discountPercentage);
+              setShowDiscountModule(true);
+          }
        }
     } else {
        if (phases.length === 0) {
@@ -139,9 +149,28 @@ const BudgetEditor: React.FC = () => {
       return `ORC-${dateStr}-${rand}`;
   };
 
-  const calculateTotal = () => {
-      return phases.reduce((sum, phase) => sum + phase.subtotal, 0);
+  const calculateTotals = () => {
+      const grossTotal = phases.reduce((sum, phase) => sum + phase.subtotal, 0);
+      
+      const discountValue = grossTotal * (discountPercentage / 100);
+      const subTotalAfterDiscount = grossTotal - discountValue;
+      
+      // Tax Calculation (Assuming 5% is included, we reverse it)
+      // TaxBase = FinalTotal / 1.05
+      // TaxValue = FinalTotal - TaxBase
+      const taxBase = subTotalAfterDiscount / 1.05;
+      const taxValue = subTotalAfterDiscount - taxBase;
+      
+      return {
+          grossTotal,
+          discountValue,
+          subTotalAfterDiscount,
+          taxValue,
+          finalTotal: subTotalAfterDiscount // Payable amount
+      };
   };
+  
+  const { grossTotal, discountValue, subTotalAfterDiscount, taxValue, finalTotal } = calculateTotals();
 
   const handleAddPhase = () => {
       const newPhase: BudgetPhase = {
@@ -216,7 +245,8 @@ const BudgetEditor: React.FC = () => {
           number: (id && id !== 'new') ? (budgets.find(b => b.id === id)?.number || generateBudgetNumber()) : generateBudgetNumber(),
           status: asFinal ? 'finalizado' : 'rascunho',
           phases: phases,
-          totalValue: calculateTotal()
+          totalValue: grossTotal, // Store Gross, Discount is separate
+          discountPercentage: discountPercentage,
       };
   };
 
@@ -296,6 +326,10 @@ const BudgetEditor: React.FC = () => {
   const filteredPatients = patientSearchTerm 
       ? patients.filter(p => p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()))
       : patients;
+      
+  const formatMoney = (val: number) => {
+      return (val || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' MT';
+  };
 
   return (
     <div className="pb-40 p-4 max-w-5xl mx-auto min-h-screen bg-gray-50">
@@ -435,10 +469,29 @@ const BudgetEditor: React.FC = () => {
                      </div>
 
                      <div className="pt-4 border-t border-gray-100">
-                         <div className="flex justify-between items-center">
-                             <span className="text-slate-600 font-medium">Total Geral</span>
+                         <div className="flex justify-between items-center mb-1">
+                             <span className="text-slate-600 text-sm">Total Bruto</span>
+                             <span className="text-sm font-medium text-slate-600">
+                                 {formatMoney(grossTotal)}
+                             </span>
+                         </div>
+                         
+                         {/* Discount Line in Summary */}
+                         {discountPercentage > 0 && (
+                             <div className="flex justify-between items-center mb-2">
+                                 <span className="text-teal-600 text-xs flex items-center gap-1">
+                                    <Tag size={12} /> Desconto ({discountPercentage}%)
+                                 </span>
+                                 <span className="text-xs font-medium text-teal-600">
+                                     - {formatMoney(discountValue)}
+                                 </span>
+                             </div>
+                         )}
+
+                         <div className="flex justify-between items-center pt-2 border-t border-gray-100 mt-2">
+                             <span className="text-slate-800 font-bold">Total Geral</span>
                              <span className="text-xl font-bold text-teal-600">
-                                 {calculateTotal().toFixed(2).replace('.', ',')} MT
+                                 {formatMoney(finalTotal)}
                              </span>
                          </div>
                      </div>
@@ -467,7 +520,7 @@ const BudgetEditor: React.FC = () => {
                          </div>
                          <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
                              <span className="text-sm font-bold text-teal-600 bg-teal-50 px-2 py-1 rounded whitespace-nowrap">
-                                 {phase.subtotal.toFixed(2)} MT
+                                 {formatMoney(phase.subtotal)}
                              </span>
                              {activePhaseIdx === idx ? <ChevronUp size={18} className="text-gray-400"/> : <ChevronDown size={18} className="text-gray-400"/>}
                          </div>
@@ -500,7 +553,7 @@ const BudgetEditor: React.FC = () => {
                                              </div>
                                              
                                              <div className="w-24 text-right font-bold text-slate-700">
-                                                 {proc.total.toFixed(2)}
+                                                 {formatMoney(proc.total)}
                                              </div>
                                              
                                              <button onClick={() => removeProcedure(idx, pIdx)} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors">
@@ -537,7 +590,7 @@ const BudgetEditor: React.FC = () => {
                                                 className="w-full text-left px-4 py-3 text-sm hover:bg-teal-50 flex justify-between border-b border-gray-50 last:border-0"
                                              >
                                                  <span><span className="font-bold text-teal-600">{p.id}</span> {p.descricao}</span>
-                                                 <span className="text-gray-500 font-medium">{p.valor_com_iva} MT</span>
+                                                 <span className="text-gray-500 font-medium">{formatMoney(p.valor_com_iva)}</span>
                                              </button>
                                          ))}
                                      </div>
@@ -560,6 +613,69 @@ const BudgetEditor: React.FC = () => {
              >
                  <Plus size={18} /> Adicionar Nova Fase
              </button>
+
+             {/* --- DISCOUNT BUTTON & MODULE --- */}
+             <div className="mt-4">
+                {!showDiscountModule ? (
+                   <button 
+                      onClick={() => setShowDiscountModule(true)}
+                      className="w-full py-3 bg-teal-50 text-teal-600 rounded-2xl font-bold text-sm border border-teal-100 hover:bg-teal-100 transition-colors flex items-center justify-center gap-2"
+                   >
+                      <Percent size={16} /> Aplicar Desconto
+                   </button>
+                ) : (
+                   <div className="bg-teal-50/50 border border-teal-200 rounded-2xl p-5 animate-in fade-in slide-in-from-top-2">
+                      <div className="flex justify-between items-center mb-4">
+                         <h3 className="font-bold text-teal-800 flex items-center gap-2">
+                            <Tag size={18} /> Módulo de Descontos
+                         </h3>
+                         <button onClick={() => {
+                             setShowDiscountModule(false);
+                             setDiscountPercentage(0);
+                         }} className="text-gray-400 hover:text-red-500">
+                             <X size={18} />
+                         </button>
+                      </div>
+
+                      <div className="mb-4">
+                          <label className="block text-xs font-bold text-teal-700 uppercase mb-1.5">Percentagem (%)</label>
+                          <input 
+                             type="number"
+                             min="0"
+                             max="100"
+                             value={discountPercentage}
+                             onChange={(e) => setDiscountPercentage(Math.min(100, Math.max(0, Number(e.target.value))))}
+                             className="w-full p-3 bg-white border border-teal-200 rounded-xl text-lg font-bold text-teal-800 focus:ring-2 focus:ring-teal-500/20 outline-none"
+                             placeholder="Ex: 10"
+                          />
+                      </div>
+
+                      <div className="space-y-2 text-sm border-t border-teal-100 pt-4">
+                          <div className="flex justify-between text-gray-500">
+                              <span>Total Bruto</span>
+                              <span>{formatMoney(grossTotal)}</span>
+                          </div>
+                          <div className="flex justify-between text-teal-600 font-medium">
+                              <span>Desconto ({discountPercentage}%)</span>
+                              <span>- {formatMoney(discountValue)}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-600 border-t border-dashed border-teal-200 pt-2 mt-2">
+                              <span>Subtotal Líquido</span>
+                              <span>{formatMoney(subTotalAfterDiscount)}</span>
+                          </div>
+                          <div className="flex justify-between text-gray-500 text-xs">
+                              <span>IVA (5% incl.)</span>
+                              <span>{formatMoney(taxValue)}</span>
+                          </div>
+                          <div className="flex justify-between font-bold text-lg text-teal-800 pt-2 border-t border-teal-200 mt-2">
+                              <span>Total Final</span>
+                              <span>{formatMoney(finalTotal)}</span>
+                          </div>
+                      </div>
+                   </div>
+                )}
+             </div>
+
          </div>
       </div>
 

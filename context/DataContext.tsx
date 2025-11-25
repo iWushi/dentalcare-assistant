@@ -241,6 +241,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             status: b.estado,
             phases: b.fases || [],
             totalValue: parseCurrency(b.valor_total),
+            discountPercentage: b.desconto_percentagem ? parseCurrency(b.desconto_percentagem) : undefined, // New field
             createdAt: b.created_at,
             updatedAt: b.updated_at
         }));
@@ -519,6 +520,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               estado: budget.status,
               fases: budget.phases, // JSONB
               valor_total: budget.totalValue,
+              desconto_percentagem: budget.discountPercentage || 0, // Save discount
               updated_at: new Date().toISOString()
           };
 
@@ -554,6 +556,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               status: savedBudget.estado,
               phases: savedBudget.fases,
               totalValue: parseCurrency(savedBudget.valor_total),
+              discountPercentage: parseCurrency(savedBudget.desconto_percentagem),
               createdAt: savedBudget.created_at,
               updatedAt: savedBudget.updated_at
           };
@@ -568,6 +571,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       } catch (err: any) {
           console.error("Erro ao guardar orçamento", err);
+          alert(`Erro ao guardar orçamento: ${err.message || err.details || JSON.stringify(err)}`);
           throw err;
       }
   };

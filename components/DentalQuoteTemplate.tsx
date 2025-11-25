@@ -13,10 +13,28 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
     return 'MT ' + (val || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   };
 
-  const grandTotal = budget.totalValue;
-  // Assumindo que o valor total já inclui IVA 5%
-  const totalTax = grandTotal - (grandTotal / 1.05);
-  const subTotal = grandTotal - totalTax;
+  const grossTotal = budget.totalValue;
+  
+  // Calculate Discount
+  const discountPercentage = budget.discountPercentage || 0;
+  const discountValue = grossTotal * (discountPercentage / 100);
+  
+  // Subtotal after discount
+  const subTotalAfterDiscount = grossTotal - discountValue;
+  
+  // Tax Calculation (5%)
+  // Assuming subTotalAfterDiscount is the gross amount including tax, we reverse calculate the tax base
+  const taxBase = subTotalAfterDiscount / 1.05;
+  const totalTax = subTotalAfterDiscount - taxBase;
+  const netTotal = taxBase; // Or just display subTotalAfterDiscount as the total to pay?
+  // Usually: Total to Pay = Subtotal (Services) + VAT.
+  // If prices include VAT: Total to Pay = Sum of Prices.
+  // If discount applied: Total to Pay = (Sum of Prices) - Discount.
+  // Then we show how much of that Total to Pay is VAT.
+  
+  // Let's stick to the display logic:
+  // Total Geral (Payable) = subTotalAfterDiscount
+  const totalPayable = subTotalAfterDiscount;
 
   const formattedDate = new Date(budget.date).toLocaleDateString('pt-PT', {
       year: 'numeric',
@@ -67,7 +85,7 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
                 size: A4; 
                 /* Margens definidas na página física para garantir que a 
                    segunda página tenha margem no topo automaticamente */
-                margin: 15mm 15mm 15mm 15mm; 
+                margin: 10mm 15mm 10mm 15mm; 
             }
             
             body { 
@@ -107,10 +125,14 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
                 <header className="flex flex-row justify-between items-start mb-10">
                     {/* Coluna Esquerda: Provider Info */}
                     <div className="flex flex-col items-start gap-1">
-                        <h1 className="text-xl font-bold text-slate-900 leading-tight">Shamila Modan</h1>
-                        <p className="font-semibold text-sm text-slate-800">Médica Dentista</p>
+                        {logoUrl ? (
+                            <img src={logoUrl} alt="Logo" className="h-16 w-auto object-contain mb-2" onError={(e) => e.currentTarget.style.display = 'none'} />
+                        ) : (
+                            <h1 className="text-xl font-bold text-slate-900 leading-tight">Shamila Modan</h1>
+                        )}
                         
                         <div className="mt-1 text-xs text-slate-600 leading-relaxed">
+                            {!logoUrl && <p className="font-semibold text-sm text-slate-800">Médica Dentista</p>}
                             <p className="uppercase tracking-wider text-[10px] text-slate-500 font-medium mb-0.5">Ortodontia e Reabilitação Oral</p>
                             <p className="font-medium">OMD 12345</p>
                             <p className="mt-1 text-slate-500">+258 84 616 6066 • modanshamila@gmail.com</p>
@@ -146,34 +168,34 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
                                 {phase.name}
                             </h3>
                             
-                            {/* Tabela de Procedimentos - Fonte reduzida (~10%) */}
+                            {/* Tabela de Procedimentos - FONTE REDUZIDA EM ~10% */}
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="border-b border-slate-200">
-                                        {/* Cabeçalho Reduzido: text-[10px] */}
-                                        <th className="py-2 pr-4 w-[60%] font-semibold text-[10px] text-slate-500 uppercase tracking-wide">Descrição do Procedimento</th>
-                                        <th className="py-2 px-2 w-[10%] text-center font-semibold text-[10px] text-slate-500 uppercase tracking-wide">Qtd.</th>
-                                        <th className="py-2 px-2 w-[15%] text-right font-semibold text-[10px] text-slate-500 uppercase tracking-wide">Valor Un.</th>
-                                        <th className="py-2 pl-4 w-[15%] text-right font-semibold text-[10px] text-slate-500 uppercase tracking-wide">Total</th>
+                                        {/* Cabeçalho Reduzido */}
+                                        <th className="py-2 pr-4 w-[60%] font-semibold text-[9px] text-slate-500 uppercase tracking-wide">Descrição do Procedimento</th>
+                                        <th className="py-2 px-2 w-[10%] text-center font-semibold text-[9px] text-slate-500 uppercase tracking-wide">Qtd.</th>
+                                        <th className="py-2 px-2 w-[15%] text-right font-semibold text-[9px] text-slate-500 uppercase tracking-wide">Valor Un.</th>
+                                        <th className="py-2 pl-4 w-[15%] text-right font-semibold text-[9px] text-slate-500 uppercase tracking-wide">Total</th>
                                     </tr>
                                 </thead>
                                 <tbody className="text-slate-700">
                                     {phase.procedures.map((proc, pIdx) => (
                                         <tr key={pIdx} className="border-b border-slate-50 last:border-0">
-                                            {/* Conteúdo Reduzido: text-xs (12px) */}
-                                            <td className="py-2.5 pr-4 align-top text-xs font-medium leading-relaxed">{proc.name}</td>
-                                            <td className="py-2.5 px-2 text-center align-top text-xs text-slate-500">{proc.quantity}</td>
-                                            <td className="py-2.5 px-2 text-right align-top text-xs text-slate-500 whitespace-nowrap">{formatMoney(proc.unitValue)}</td>
-                                            <td className="py-2.5 pl-4 text-right align-top text-xs font-semibold text-slate-700 whitespace-nowrap">{formatMoney(proc.total)}</td>
+                                            {/* Conteúdo Reduzido */}
+                                            <td className="py-2.5 pr-4 align-top text-[11px] font-medium leading-relaxed">{proc.name}</td>
+                                            <td className="py-2.5 px-2 text-center align-top text-[11px] text-slate-500">{proc.quantity}</td>
+                                            <td className="py-2.5 px-2 text-right align-top text-[11px] text-slate-500 whitespace-nowrap">{formatMoney(proc.unitValue)}</td>
+                                            <td className="py-2.5 pl-4 text-right align-top text-[11px] font-semibold text-slate-700 whitespace-nowrap">{formatMoney(proc.total)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot>
                                     <tr>
-                                        <td colSpan={3} className="pt-2.5 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                        <td colSpan={3} className="pt-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                                             Subtotal Fase {idx + 1}
                                         </td>
-                                        <td className="pt-2.5 pl-4 text-right text-xs font-bold text-slate-800 whitespace-nowrap">
+                                        <td className="pt-2.5 pl-4 text-right text-[11px] font-bold text-slate-800 whitespace-nowrap">
                                             {formatMoney(phase.subtotal)}
                                         </td>
                                     </tr>
@@ -190,17 +212,31 @@ export const DentalQuoteTemplate = forwardRef<HTMLDivElement, DentalQuoteTemplat
                 {/* TOTALS */}
                 <div className="flex justify-end mt-8 mb-10">
                     <div className="w-64">
+                        {/* Discount Breakdown if Applicable */}
+                        {discountPercentage > 0 && (
+                           <>
+                             <div className="flex justify-between py-1.5 text-xs text-slate-500 border-b border-slate-100">
+                                <span className="font-medium">Total Bruto</span>
+                                <span className="whitespace-nowrap">{formatMoney(grossTotal)}</span>
+                             </div>
+                             <div className="flex justify-between py-1.5 text-xs text-teal-600 border-b border-slate-100">
+                                <span className="font-medium">Desconto ({discountPercentage}%)</span>
+                                <span className="whitespace-nowrap">- {formatMoney(discountValue)}</span>
+                             </div>
+                           </>
+                        )}
+
                         <div className="flex justify-between py-1.5 text-xs text-slate-600 border-b border-slate-100">
-                            <span className="font-medium">Subtotal</span>
-                            <span className="whitespace-nowrap">{formatMoney(subTotal)}</span>
+                            <span className="font-medium">Subtotal Líquido</span>
+                            <span className="whitespace-nowrap">{formatMoney(netTotal)}</span>
                         </div>
                         <div className="flex justify-between py-1.5 text-xs text-slate-600 border-b border-slate-100">
                             <span className="font-medium">IVA (5%)</span>
                             <span className="whitespace-nowrap">{formatMoney(totalTax)}</span>
                         </div>
                         <div className="flex justify-between py-3 text-lg font-bold text-slate-900 items-baseline">
-                            <span>Total</span>
-                            <span className="whitespace-nowrap">{formatMoney(grandTotal)}</span>
+                            <span>Total a Pagar</span>
+                            <span className="whitespace-nowrap">{formatMoney(totalPayable)}</span>
                         </div>
                     </div>
                 </div>
