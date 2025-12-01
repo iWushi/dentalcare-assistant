@@ -98,6 +98,7 @@ export interface Budget {
   status: 'rascunho' | 'finalizado';
   phases: BudgetPhase[];
   totalValue: number;
+  discountPercentage?: number;
   createdAt?: string;
   updatedAt?: string;
 }

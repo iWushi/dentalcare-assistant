@@ -1,14 +1,17 @@
+
 import React, { useState, useMemo } from 'react';
+import { createRoot } from 'react-dom/client';
 import { useData } from '../context/DataContext';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, PieChart, Pie
 } from 'recharts';
 import { 
-  TrendingUp, TrendingDown, Download, ChevronRight, 
-  Building2, Map as MapIcon, Calendar, Target, FlaskConical, Info
+  TrendingUp, TrendingDown, Printer, ChevronRight, 
+  Building2, Map as MapIcon, Calendar, Target, FlaskConical, Info, Download
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OBJETIVO_MENSAL, CLINICS, PROCEDURE_CATEGORIES } from '../constants';
+import { FinancialReportTemplate } from '../components/FinancialReportTemplate';
 
 const MONTHS = [
   { value: '1', label: 'Janeiro' },
@@ -27,6 +30,78 @@ const MONTHS = [
 
 const YEARS = ['2024', '2025', '2026'];
 
+// Helper for Manual Printing (Consistent with BudgetEditor)
+const printFinancialReport = (
+    consultations: any[], 
+    periodLabel: string, 
+    totalValue: number
+) => {
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  
+  const doc = iframe.contentWindow?.document;
+  if (!doc) return;
+
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html lang="pt-PT">
+      <head>
+        <title>Relatório Financeiro - ${periodLabel}</title>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        <style>
+           body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
+           @page { margin: 0; }
+        </style>
+      </head>
+      <body>
+        <div id="print-mount"></div>
+      </body>
+    </html>
+  `);
+  doc.close();
+
+  setTimeout(() => {
+      const mountNode = doc.getElementById('print-mount');
+      if (mountNode) {
+          const root = createRoot(mountNode);
+          const logoUrl = window.location.origin + "/logo.png";
+          
+          root.render(
+            <FinancialReportTemplate 
+                consultations={consultations} 
+                periodLabel={periodLabel} 
+                totalValue={totalValue} 
+                logoUrl={logoUrl} 
+            />
+          );
+          
+          setTimeout(() => {
+              const originalTitle = document.title;
+              const safeName = `Relatorio_${periodLabel.replace(/\s/g, '_').replace(/\//g, '-')}`;
+              
+              document.title = safeName;
+              if (iframe.contentDocument) iframe.contentDocument.title = safeName;
+
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+              
+              document.title = originalTitle;
+              
+              setTimeout(() => {
+                 if (document.body.contains(iframe)) {
+                   document.body.removeChild(iframe);
+                 }
+              }, 10000);
+          }, 1000);
+      }
+  }, 500);
+};
+
 const Reports: React.FC = () => {
   const { consultations, availableProcedures } = useData();
   
@@ -44,6 +119,8 @@ const Reports: React.FC = () => {
     start: `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`, 
     end: `${currentYear}-${String(currentMonth).padStart(2, '0')}-30` 
   });
+
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // --- Helpers ---
   const formatMoney = (val: number) => {
@@ -133,23 +210,20 @@ const Reports: React.FC = () => {
        }
     }
 
-    // Clínicas (usando valor_final_dra)
+    // Clínicas
     const sommerschield = filtered.filter(c => c.clinic === CLINICS.SOMMERSCHIELD);
     const baixa = filtered.filter(c => c.clinic === CLINICS.BAIXA);
     const commSomm = sommerschield.reduce((sum, c) => sum + (Number(c.doctorCommission) || 0), 0);
     const commBaixa = baixa.reduce((sum, c) => sum + (Number(c.doctorCommission) || 0), 0);
 
-    // Pendências Lab (apenas futuras/hoje e que tenham itens de lab)
-    // Regra: custo_lab NULL/0 && tem_lab = true && data >= hoje
+    // Pendências Lab
     const pendingLabs = safeConsultations.filter(c => {
         if (c.date < todayStr) return false;
-        return c.hasPendingLab; // Esta flag já é calculada no DataContext com base em procedimentos e custo
+        return c.hasPendingLab;
     });
 
-    // Top 5 Categorias (baseado em Preços.categoria)
+    // Top 5 Categorias
     const catMap: Record<string, { value: number, count: number, color: string }> = {};
-    
-    // Mapa rápido de Código -> Categoria (usando availableProcedures do DataContext)
     const codeToCatMap = new Map<string, string>();
     availableProcedures.forEach(price => {
         if (price.id) codeToCatMap.set(price.id, price.categoria || 'Geral');
@@ -161,24 +235,18 @@ const Reports: React.FC = () => {
 
        c.procedures.forEach(p => {
            if (!p.code) return;
-           
-           // Tenta encontrar categoria pelo código completo
            let catName = codeToCatMap.get(p.code);
            
-           // Se não encontrar, tenta inferir pela primeira letra (Legacy fallback)
            if (!catName) {
                const firstLetter = p.code.charAt(0).toUpperCase();
                const matchedCat = PROCEDURE_CATEGORIES.find(cat => cat.code === firstLetter);
                catName = matchedCat ? matchedCat.name : 'Outros';
            }
 
-           // Se a categoria vier da BD (ex: "Dentística"), vamos tentar mapear cor
-           // Se não, usamos default
            let catColor = '#94a3b8';
            const knownCat = PROCEDURE_CATEGORIES.find(cat => cat.name.toLowerCase() === catName?.toLowerCase() || cat.code === p.code.charAt(0));
            if (knownCat) catColor = knownCat.color;
 
-           // Proporção da comissão da Dra para este procedimento
            const weight = (p.value || 0) / totalValue;
            const procCommission = (c.doctorCommission || 0) * weight;
 
@@ -216,7 +284,6 @@ const Reports: React.FC = () => {
       let newCount = 0;
       let recurringCount = 0;
       
-      // Set of Patient IDs who visited in selected year
       const yearConsultations = consultations.filter(c => {
           const y = parseInt(c.date.split('-')[0]);
           return y === targetYear;
@@ -224,7 +291,6 @@ const Reports: React.FC = () => {
       const visitorsThisYear = new Set(yearConsultations.map(c => c.patientId));
 
       visitorsThisYear.forEach(pid => {
-          // Find history of this patient sorted by date
           const patientHistory = consultations
              .filter(c => c.patientId === pid)
              .sort((a,b) => a.date.localeCompare(b.date));
@@ -234,18 +300,16 @@ const Reports: React.FC = () => {
           const firstVisitDate = patientHistory[0].date;
           const firstVisitYear = parseInt(firstVisitDate.split('-')[0]);
 
-          // Novos: Primeira vez que aparece é neste ano
           if (firstVisitYear === targetYear) {
               newCount++;
           } else {
-              // Recorrentes: Já apareceu antes deste ano, e voltou este ano
               recurringCount++;
           }
       });
 
       return [
-          { name: 'Novos', value: newCount, color: '#0d9488' }, // Teal
-          { name: 'Recorrentes', value: recurringCount, color: '#94a3b8' } // Slate
+          { name: 'Novos', value: newCount, color: '#0d9488' }, 
+          { name: 'Recorrentes', value: recurringCount, color: '#94a3b8' } 
       ];
   }, [consultations, selYear]);
 
@@ -284,114 +348,36 @@ const Reports: React.FC = () => {
     return { data, curYearInt, prevYearInt };
   }, [consultations, selYear]);
 
-  // --- CSV EXPORTAÇÃO (FORMATO CLÍNICO) ---
-  const generateCSV = () => {
-    // 1. Ordenar dados (Data ASC + Criação ASC)
-    const sortedData = [...reportData.filtered].sort((a, b) => {
-        const dateA = new Date(a.date).getTime();
-        const dateB = new Date(b.date).getTime();
-        if (dateA !== dateB) return dateA - dateB;
-        
-        const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return createdA - createdB;
-    });
-    
-    // 2. Dados do Cabeçalho
-    const doctorName = "Dra. Shamila Modan";
-    
-    // Definir "Local"
-    const clinicsFound = new Set(sortedData.map(c => c.clinic));
-    let localStr = "Sommerschield";
-    if (clinicsFound.has('Sommerschield') && clinicsFound.has('Baixa')) {
-        localStr = "Sommerschield e Baixa";
-    } else if (clinicsFound.has('Baixa') && !clinicsFound.has('Sommerschield')) {
-        localStr = "Baixa";
-    } else if (clinicsFound.size === 0) {
-        localStr = "—";
-    }
-
-    // Definir "Mês"
-    let monthLabel = selMonth;
-    if (filterType === 'month') {
-        monthLabel = MONTHS.find(m => m.value === selMonth)?.label || selMonth;
-    } else {
-        monthLabel = `${formatDateBr(dateRange.start)} a ${formatDateBr(dateRange.end)}`;
-    }
-    const timeLabel = filterType === 'month' ? `${monthLabel} ${selYear}` : monthLabel;
-
-    // 3. Construir Conteúdo CSV (com separador ;)
-    const SEP = ';';
-    let csvContent = "\uFEFF"; // BOM para abrir correctamente no Excel
-    
-    // Cabeçalho
-    csvContent += `NOME DO MEDICO:${SEP}${doctorName}\n`;
-    csvContent += `LOCAL:${SEP}${localStr}\n`;
-    csvContent += `MES:${SEP}${timeLabel}\n`;
-    csvContent += `\n`; 
-
-    // Tabela
-    csvContent += `ORDEM${SEP}NOME DO PACIENTE${SEP}TRATAMENTO FEITO${SEP}VALOR${SEP}OBSERVACAO\n`;
-
-    // Linhas
-    sortedData.forEach((c, index) => {
-      const order = index + 1;
-      const patientName = c.patientName ? c.patientName.replace(/;/g, ',') : '';
+  // --- PDF EXPORTAÇÃO ---
+  const handleExportPDF = () => {
+      setIsPrinting(true);
       
-      // Tratamentos (apenas códigos)
-      const treatments = c.procedures
-          .map(p => p.code)
-          .filter(Boolean)
-          .join(' + ');
-
-      // Valor Formatado: "000 000,00" (sem símbolo monetário)
-      const val = c.doctorCommission || 0;
-      const valStr = val.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-
-      // Observação
-      const obs = c.notes ? c.notes.replace(/;/g, ',').replace(/\n/g, ' ') : "—";
+      // Ordenar por data
+      const sorted = [...reportData.filtered].sort((a, b) => a.date.localeCompare(b.date));
+      const period = getPeriodLabel();
       
-      csvContent += `${order}${SEP}${patientName}${SEP}${treatments}${SEP}${valStr}${SEP}${obs}\n`;
-    });
+      // Chamar função de impressão manual
+      printFinancialReport(sorted, period, reportData.totalCommission);
 
-    // 4. Download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    
-    const fileName = filterType === 'month'
-         ? `Relatorio_Mensal_${monthLabel}_${selYear}.csv`
-         : `Relatorio_${dateRange.start}_${dateRange.end}.csv`;
-         
-    link.setAttribute('download', fileName);
-    link.click();
+      setTimeout(() => setIsPrinting(false), 2000);
   };
 
-  // --- NOVO TOOLTIP ENRIQUECIDO ---
   const CustomTooltipTop5 = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
-      
-      // Calcular percentagem em relação ao total deste período
       const percent = reportData.totalCommission > 0 
           ? ((data.value / reportData.totalCommission) * 100).toFixed(1) 
           : '0';
 
       return (
         <div className="bg-slate-800 p-4 rounded-xl shadow-xl border border-slate-700 z-50 max-w-[240px]">
-          {/* Header with Color Dot */}
           <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-700">
              <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: data.color }}></div>
              <span className="font-bold text-slate-100 text-sm">{data.name}</span>
           </div>
-          
-          {/* Main Value */}
           <div className="mb-2">
              <span className="text-2xl font-bold text-white tracking-tight">{formatMoney(data.value)}</span>
           </div>
-
-          {/* Contextual Sentence */}
           <p className="text-[11px] text-slate-400 leading-relaxed">
              Corresponde a <strong className="text-teal-400">{percent}%</strong> de toda a tua facturação neste período.
           </p>
@@ -428,11 +414,12 @@ const Reports: React.FC = () => {
            </div>
 
            <button 
-              onClick={generateCSV}
-              className="bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs items-center justify-center gap-2 shadow-lg hover:bg-slate-700 flex"
+              onClick={handleExportPDF}
+              disabled={isPrinting || reportData.filtered.length === 0}
+              className="bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs items-center justify-center gap-2 shadow-lg hover:bg-slate-700 flex disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
             >
-              <Download size={16} />
-              <span>Exportar CSV</span>
+              <Printer size={16} />
+              <span>{isPrinting ? 'A gerar...' : 'Exportar PDF'}</span>
            </button>
         </div>
 
@@ -490,7 +477,6 @@ const Reports: React.FC = () => {
         <div className="flex justify-between items-start mb-2">
             <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Líquido</span>
             
-            {/* TOOLTIP CONTAINER */}
             <div className="relative group cursor-help">
                 <div className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border ${reportData.isPositive ? 'bg-teal-900/50 text-teal-400 border-teal-800/50' : 'bg-red-900/50 text-red-400 border-red-800/50'}`}>
                     {reportData.isPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
@@ -498,7 +484,6 @@ const Reports: React.FC = () => {
                     {filterType === 'month' && <Info size={10} className="text-current opacity-50 ml-1" />}
                 </div>
 
-                {/* TOOLTIP CONTENT */}
                 {filterType === 'month' && (
                     <div className="absolute right-0 top-full mt-2 w-48 p-3 bg-white text-slate-600 text-[10px] rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                         <div className="absolute -top-1 right-3 w-2 h-2 bg-white rotate-45"></div>
