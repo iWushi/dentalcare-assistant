@@ -6,7 +6,7 @@ interface FinancialReportTemplateProps {
   consultations: Consultation[];
   periodLabel: string;
   totalValue: number;
-  logoUrl?: string;
+  logoUrl?: string; // Mantido para compatibilidade, mas não utilizado
   doctorName?: string;
 }
 
@@ -14,7 +14,6 @@ export const FinancialReportTemplate = forwardRef<HTMLDivElement, FinancialRepor
   consultations, 
   periodLabel, 
   totalValue,
-  logoUrl,
   doctorName = "Dra. Shamila Modan"
 }, ref) => {
   
@@ -66,11 +65,8 @@ export const FinancialReportTemplate = forwardRef<HTMLDivElement, FinancialRepor
         {/* HEADER */}
         <header className="flex justify-between items-start mb-8 border-b border-slate-200 pb-6">
             <div className="flex flex-col gap-1">
-                {logoUrl ? (
-                    <img src={logoUrl} alt="Logo" className="h-12 w-auto object-contain mb-2" />
-                ) : (
-                    <h1 className="text-xl font-bold text-slate-900">{doctorName}</h1>
-                )}
+                {/* Nome da Médica em vez do Logotipo */}
+                <h1 className="text-xl font-bold text-slate-900">{doctorName}</h1>
                 <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">Relatório Financeiro</p>
             </div>
             <div className="text-right">
