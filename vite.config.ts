@@ -35,7 +35,9 @@ export default defineConfig(({ mode }) => {
             // Split Supabase SDK
             'supabase': ['@supabase/supabase-js'],
             // Split PDF generation
-            'print': ['react-to-print']
+            'print': ['react-to-print'],
+            // Split Excel generation
+            'excel': ['xlsx']
           }
         }
       }
