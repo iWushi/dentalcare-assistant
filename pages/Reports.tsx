@@ -297,13 +297,13 @@ const Reports: React.FC = () => {
         const sortedData = [...reportData.filtered].sort((a,b) => a.date.localeCompare(b.date));
         
         sortedData.forEach((c, index) => {
-            // Join procedure names for "Tratamento Feito"
-            const treatments = c.procedures.map(p => p.name).join(', ');
+            // Alteração 1: Usar códigos em vez de nomes
+            const treatments = c.procedures.map(p => p.code).join(', ');
             
             ws_data.push([
                 index + 1,        // ORDEM
                 c.patientName,    // NOME DO PACIENTE
-                treatments,       // TRATAMENTO FEITO
+                treatments,       // TRATAMENTO FEITO (Códigos)
                 c.doctorCommission, // VALOR (Number for Excel calculation)
                 c.clinic          // CLÍNICA
             ]);
@@ -314,6 +314,18 @@ const Reports: React.FC = () => {
 
         // Create Sheet
         const ws = utils.aoa_to_sheet(ws_data);
+
+        // Alteração 2: Formatação de Moeda na coluna VALOR (Coluna index 3 / D)
+        // Começa na linha 6 (índice 5 no array ws_data, que corresponde a linha 6 do Excel)
+        const range = utils.decode_range(ws['!ref'] || "A1:E1");
+        // Loop from row 5 (0-indexed, which is Excel row 6) to end
+        for (let R = 5; R <= range.e.r; ++R) {
+          const ref = utils.encode_cell({c: 3, r: R}); // Column 3 = D (Valor)
+          if (!ws[ref]) continue;
+          // Formato: #,##0.00 (Separador de milhares e 2 casas decimais)
+          ws[ref].z = "#,##0.00";
+          ws[ref].t = 'n'; // Force type number
+        }
         
         // Set Column Widths (Approximate character count)
         ws['!cols'] = [
