@@ -1,17 +1,15 @@
-
 import React, { useState, useMemo } from 'react';
-import { createRoot } from 'react-dom/client';
 import { useData } from '../context/DataContext';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, PieChart, Pie
 } from 'recharts';
 import { 
-  TrendingUp, TrendingDown, Printer, ChevronRight, 
-  Building2, Map as MapIcon, Calendar, Target, FlaskConical, Info, Download
+  TrendingUp, TrendingDown, FileSpreadsheet, ChevronRight, 
+  Building2, Map as MapIcon, Calendar, Target, FlaskConical, Info
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OBJETIVO_MENSAL, CLINICS, PROCEDURE_CATEGORIES } from '../constants';
-import { FinancialReportTemplate } from '../components/FinancialReportTemplate';
+import { utils, writeFile } from 'xlsx';
 
 const MONTHS = [
   { value: '1', label: 'Janeiro' },
@@ -29,78 +27,6 @@ const MONTHS = [
 ];
 
 const YEARS = ['2024', '2025', '2026'];
-
-// Helper for Manual Printing (Consistent with BudgetEditor)
-const printFinancialReport = (
-    consultations: any[], 
-    periodLabel: string, 
-    totalValue: number
-) => {
-  const iframe = document.createElement('iframe');
-  iframe.style.display = 'none';
-  document.body.appendChild(iframe);
-  
-  const doc = iframe.contentWindow?.document;
-  if (!doc) return;
-
-  doc.open();
-  doc.write(`
-    <!DOCTYPE html>
-    <html lang="pt-PT">
-      <head>
-        <title>Relatório Financeiro - ${periodLabel}</title>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <script src="https://cdn.tailwindcss.com"></script>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-        <style>
-           body { font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
-           @page { margin: 0; }
-        </style>
-      </head>
-      <body>
-        <div id="print-mount"></div>
-      </body>
-    </html>
-  `);
-  doc.close();
-
-  setTimeout(() => {
-      const mountNode = doc.getElementById('print-mount');
-      if (mountNode) {
-          const root = createRoot(mountNode);
-          const logoUrl = window.location.origin + "/logo.png";
-          
-          root.render(
-            <FinancialReportTemplate 
-                consultations={consultations} 
-                periodLabel={periodLabel} 
-                totalValue={totalValue} 
-                logoUrl={logoUrl} 
-            />
-          );
-          
-          setTimeout(() => {
-              const originalTitle = document.title;
-              const safeName = `Relatorio_${periodLabel.replace(/\s/g, '_').replace(/\//g, '-')}`;
-              
-              document.title = safeName;
-              if (iframe.contentDocument) iframe.contentDocument.title = safeName;
-
-              iframe.contentWindow?.focus();
-              iframe.contentWindow?.print();
-              
-              document.title = originalTitle;
-              
-              setTimeout(() => {
-                 if (document.body.contains(iframe)) {
-                   document.body.removeChild(iframe);
-                 }
-              }, 10000);
-          }, 1000);
-      }
-  }, 500);
-};
 
 const Reports: React.FC = () => {
   const { consultations, availableProcedures } = useData();
@@ -120,7 +46,7 @@ const Reports: React.FC = () => {
     end: `${currentYear}-${String(currentMonth).padStart(2, '0')}-30` 
   });
 
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // --- Helpers ---
   const formatMoney = (val: number) => {
@@ -348,18 +274,68 @@ const Reports: React.FC = () => {
     return { data, curYearInt, prevYearInt };
   }, [consultations, selYear]);
 
-  // --- PDF EXPORTAÇÃO ---
-  const handleExportPDF = () => {
-      setIsPrinting(true);
-      
-      // Ordenar por data
-      const sorted = [...reportData.filtered].sort((a, b) => a.date.localeCompare(b.date));
-      const period = getPeriodLabel();
-      
-      // Chamar função de impressão manual
-      printFinancialReport(sorted, period, reportData.totalCommission);
+  // --- EXCEL EXPORT ---
+  const handleExportExcel = () => {
+      if (reportData.filtered.length === 0) return;
+      setIsExporting(true);
 
-      setTimeout(() => setIsPrinting(false), 2000);
+      try {
+        const wb = utils.book_new();
+        const ws_data: any[][] = [];
+        
+        // 1. HEADER INFO (Rows 1-4)
+        ws_data.push(["NOME DO MEDICO: Dra Shamila Modan"]);
+        ws_data.push(["LOCAL: Baixa e Sommerschield"]);
+        ws_data.push([`MES: ${getPeriodLabel()}`]); 
+        ws_data.push([]); // Spacer
+        
+        // 2. TABLE HEADERS (Row 5)
+        const headers = ["ORDEM", "NOME DO PACIENTE", "TRATAMENTO FEITO", "VALOR", "CLÍNICA"];
+        ws_data.push(headers);
+        
+        // 3. DATA ROWS
+        const sortedData = [...reportData.filtered].sort((a,b) => a.date.localeCompare(b.date));
+        
+        sortedData.forEach((c, index) => {
+            // Join procedure names for "Tratamento Feito"
+            const treatments = c.procedures.map(p => p.name).join(', ');
+            
+            ws_data.push([
+                index + 1,        // ORDEM
+                c.patientName,    // NOME DO PACIENTE
+                treatments,       // TRATAMENTO FEITO
+                c.doctorCommission, // VALOR (Number for Excel calculation)
+                c.clinic          // CLÍNICA
+            ]);
+        });
+        
+        // 4. TOTAL ROW
+        ws_data.push(["TOTAL", "", "", reportData.totalCommission, ""]);
+
+        // Create Sheet
+        const ws = utils.aoa_to_sheet(ws_data);
+        
+        // Set Column Widths (Approximate character count)
+        ws['!cols'] = [
+            { wch: 8 },  // ORDEM
+            { wch: 30 }, // PACIENTE
+            { wch: 50 }, // TRATAMENTO
+            { wch: 15 }, // VALOR
+            { wch: 15 }  // CLINICA
+        ];
+
+        utils.book_append_sheet(wb, ws, "Relatório");
+        
+        // Generate Filename
+        const safeName = `Relatorio_Financeiro_${getPeriodLabel().replace(/\s/g, '_').replace(/\//g, '-')}.xlsx`;
+        writeFile(wb, safeName);
+        
+      } catch (e) {
+        console.error("Erro ao exportar Excel:", e);
+        alert("Erro ao gerar o ficheiro Excel.");
+      } finally {
+        setIsExporting(false);
+      }
   };
 
   const CustomTooltipTop5 = ({ active, payload }: any) => {
@@ -414,12 +390,12 @@ const Reports: React.FC = () => {
            </div>
 
            <button 
-              onClick={handleExportPDF}
-              disabled={isPrinting || reportData.filtered.length === 0}
-              className="bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs items-center justify-center gap-2 shadow-lg hover:bg-slate-700 flex disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+              onClick={handleExportExcel}
+              disabled={isExporting || reportData.filtered.length === 0}
+              className="bg-green-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs items-center justify-center gap-2 shadow-lg hover:bg-green-800 flex disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
             >
-              <Printer size={16} />
-              <span>{isPrinting ? 'A gerar...' : 'Exportar PDF'}</span>
+              <FileSpreadsheet size={16} />
+              <span>{isExporting ? 'A gerar...' : 'Exportar Excel'}</span>
            </button>
         </div>
 
