@@ -16,6 +16,7 @@ interface DataContextType {
   updateConsultation: (id: string, updates: Partial<Consultation>) => Promise<void>;
   deleteConsultation: (id: string) => Promise<void>;
   addPatient: (patient: Omit<Patient, 'id' | 'createdAt'>) => Promise<Patient | null>;
+  updatePatient: (id: string, updates: Partial<Patient>) => Promise<void>;
   deletePatient: (id: string) => Promise<void>;
   mergePatients: (targetId: string, sourceId: string) => Promise<void>;
   
@@ -462,6 +463,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
   };
+  
+  const updatePatient = async (id: string, updates: Partial<Patient>) => {
+    try {
+      const dbUpdates: any = {};
+      if (updates.name) dbUpdates.nome = updates.name;
+      if (updates.phone) dbUpdates.telefone = updates.phone;
+      if (updates.notes !== undefined) dbUpdates.notas_gerais = updates.notes;
+
+      const { error } = await supabase
+        .from('pacientes')
+        .update(dbUpdates)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // 1. Atualizar Estado Local dos Pacientes
+      setPatients(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+
+      // 2. Propagar mudança de nome para Consultas e Orçamentos (Database & Local)
+      if (updates.name) {
+         // Database (Parallel)
+         const p1 = supabase.from('consultas').update({ paciente_nome: updates.name }).eq('paciente_id', id);
+         const p2 = supabase.from('orcamentos').update({ paciente_nome: updates.name }).eq('paciente_id', id);
+         
+         // Não bloqueamos a UI pelo update secundário, mas fazemos em background
+         Promise.all([p1, p2]).catch(err => console.error("Erro propagando nome:", err));
+
+         // Local State Updates (Instant UI Feedback)
+         setConsultations(prev => prev.map(c => c.patientId === id ? { ...c, patientName: updates.name! } : c));
+         setBudgets(prev => prev.map(b => b.patientId === id ? { ...b, patientName: updates.name! } : b));
+      }
+
+    } catch (err: any) {
+      console.error('Error updating patient:', err);
+      throw err;
+    }
+  };
 
   const deletePatient = async (id: string) => {
     try {
@@ -601,6 +639,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateConsultation,
       deleteConsultation,
       addPatient,
+      updatePatient,
       deletePatient,
       mergePatients,
       saveBudget,

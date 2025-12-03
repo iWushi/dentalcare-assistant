@@ -1,14 +1,29 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, Navigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { ArrowLeft, Phone, Calendar, Edit2 } from 'lucide-react';
+import { ArrowLeft, Phone, Calendar, Edit2, X, Save } from 'lucide-react';
 
 const PatientDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { getPatientById, getConsultationsByPatient } = useData();
+  const { getPatientById, getConsultationsByPatient, updatePatient } = useData();
   
   const patient = id ? getPatientById(id) : undefined;
+  
+  // Edit Modal State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Load initial data for editing
+  useEffect(() => {
+    if(patient) {
+        setEditName(patient.name);
+        setEditPhone(patient.phone);
+        setEditNotes(patient.notes);
+    }
+  }, [patient, isEditing]);
   
   if (!patient) {
     return <Navigate to="/patients" />;
@@ -20,6 +35,38 @@ const PatientDetails: React.FC = () => {
   // Manual format for spaces
   const formatMoney = (val: number) => {
      return val.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' MT';
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value;
+    if (val.length < 4 && !val.startsWith('+258')) {
+        setEditPhone('+258 ');
+        return;
+    }
+    const rawInput = val.replace(/[^\d+]/g, '');
+    let digits = rawInput.replace(/^\+258/, '');
+    let formatted = '+258 ';
+    if (digits.length > 0) formatted += digits.substring(0, 2);
+    if (digits.length > 2) formatted += ' ' + digits.substring(2, 5);
+    if (digits.length > 5) formatted += ' ' + digits.substring(5, 9);
+    setEditPhone(formatted);
+  };
+
+  const handleSave = async () => {
+      if(!patient) return;
+      setIsSaving(true);
+      try {
+          await updatePatient(patient.id, {
+              name: editName,
+              phone: editPhone,
+              notes: editNotes
+          });
+          setIsEditing(false);
+      } catch(e) {
+          alert("Erro ao actualizar dados do paciente.");
+      } finally {
+          setIsSaving(false);
+      }
   };
 
   return (
@@ -41,7 +88,11 @@ const PatientDetails: React.FC = () => {
                   <span>{patient.phone}</span>
                </div>
             </div>
-            <button className="p-2 text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100">
+            <button 
+                onClick={() => setIsEditing(true)}
+                className="p-2 text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
+                title="Editar Paciente"
+            >
                <Edit2 size={18} />
             </button>
          </div>
@@ -68,6 +119,11 @@ const PatientDetails: React.FC = () => {
       {/* History */}
       <h3 className="font-bold text-slate-700 mb-3">Histórico Clínico</h3>
       <div className="space-y-4 relative before:absolute before:left-4 before:top-0 before:bottom-0 before:w-0.5 before:bg-gray-200">
+         {history.length === 0 && (
+             <div className="pl-10 text-gray-400 italic text-sm py-4">
+                 Sem histórico de consultas.
+             </div>
+         )}
          {history.map((cons) => (
            <div key={cons.id} className="relative pl-10">
               <div className="absolute left-[11px] top-1 w-3 h-3 bg-teal-600 rounded-full border-2 border-white ring-1 ring-gray-200"></div>
@@ -97,6 +153,63 @@ const PatientDetails: React.FC = () => {
            </div>
          ))}
       </div>
+
+      {/* Edit Modal */}
+      {isEditing && (
+         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+               <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-xl text-slate-800">Editar Paciente</h3>
+                  <button onClick={() => setIsEditing(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
+                     <X size={20} />
+                  </button>
+               </div>
+               
+               <div className="space-y-4 mb-6">
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Nome Completo</label>
+                    <input 
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base focus:ring-2 focus:ring-teal-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Telefone</label>
+                    <input 
+                      type="tel"
+                      inputMode="tel"
+                      value={editPhone}
+                      onChange={handlePhoneChange}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-base font-mono focus:ring-2 focus:ring-teal-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase mb-1.5 block">Notas Gerais</label>
+                    <textarea 
+                      rows={3}
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    />
+                  </div>
+               </div>
+               
+               <button 
+                  onClick={handleSave}
+                  disabled={!editName || isSaving}
+                  className="w-full py-3.5 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 disabled:opacity-50 text-base shadow-lg shadow-teal-600/20 flex items-center justify-center gap-2"
+               >
+                  {isSaving ? 'A guardar...' : (
+                      <>
+                         <Save size={18} /> Guardar Alterações
+                      </>
+                  )}
+               </button>
+            </div>
+         </div>
+      )}
 
     </div>
   );
