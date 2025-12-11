@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { HashRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
 import { DataProvider } from './context/DataContext';
@@ -16,6 +15,7 @@ import Consultations from './pages/Consultations';
 import Login from './pages/Login';
 import Budgets from './pages/Budgets';
 import BudgetEditor from './pages/BudgetEditor';
+import UpdatePassword from './pages/UpdatePassword';
 
 const Layout = () => (
   <div className="min-h-screen bg-gray-50 font-sans text-slate-900">
@@ -59,6 +59,8 @@ const App: React.FC = () => {
               <Route path="budgets" element={<Budgets />} />
               <Route path="budgets/new" element={<BudgetEditor />} />
               <Route path="budgets/:id" element={<BudgetEditor />} />
+              {/* Rota para definir nova senha (acessível apenas se autenticado via link mágico) */}
+              <Route path="update-password" element={<UpdatePassword />} />
             </Route>
           </Routes>
         </HashRouter>

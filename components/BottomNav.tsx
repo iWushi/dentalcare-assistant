@@ -15,10 +15,10 @@ const BottomNav: React.FC = () => {
   return (
     // Ajuste: Aumentado para + 30px para garantir que fica acima da Home Bar no iPhone 17 Pro Max
     <nav 
-      className="bg-white/85 backdrop-blur-md border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] fixed bottom-0 left-0 right-0 z-50 transition-all duration-200"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 30px)' }}
+      className="bg-white/95 backdrop-blur-md border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] fixed bottom-0 left-0 right-0 z-50 transition-all duration-200 safe-area-bottom"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)' }}
     >
-      <div className="flex justify-around items-center h-14">
+      <div className="flex justify-around items-center h-16">
         {navItems.map((item) => (
           <NavLink
             key={item.path}

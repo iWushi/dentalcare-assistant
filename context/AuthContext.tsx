@@ -1,100 +1,80 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../services/supabase';
+import { Session, User } from '@supabase/supabase-js';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  isBiometricEnabled: boolean;
+  user: User | null;
   isLoading: boolean;
-  login: (password: string) => boolean;
-  enableBiometrics: () => void;
-  unlockSession: () => void;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<{ error: any }>;
+  resetPassword: (email: string) => Promise<{ error: any }>;
+  updatePassword: (newPassword: string) => Promise<{ error: any }>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Chave secreta e configurações
-const APP_PASSWORD = 'Sh4mila_Sandra_08*94';
-const TOKEN_KEY = 'dental_auth_token';
-const EXPIRY_KEY = 'dental_auth_expiry';
-const BIOMETRIC_KEY = 'dental_biometric_enabled';
-const SESSION_DURATION = 60 * 24 * 60 * 60 * 1000; // 60 dias em milissegundos
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    checkAuth();
+    // 1. Verificar sessão actual ao iniciar
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
+
+    // 2. Escutar mudanças (Login, Logout, Auto-refresh token)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const checkAuth = () => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    const expiry = localStorage.getItem(EXPIRY_KEY);
-    const bioEnabled = localStorage.getItem(BIOMETRIC_KEY) === 'true';
-
-    setIsBiometricEnabled(bioEnabled);
-
-    if (token && expiry) {
-      const now = new Date().getTime();
-      if (now < parseInt(expiry)) {
-        // Token válido
-        // Se biometria estiver ativa, NÃO autenticamos imediatamente, deixamos a UI de Login pedir o desbloqueio
-        // Se biometria NÃO estiver ativa, entramos direto (comportamento "Manter sessão iniciada")
-        if (!bioEnabled) {
-           setIsAuthenticated(true);
-        }
-      } else {
-        // Token expirado
-        logout();
-      }
-    }
-    setIsLoading(false);
+  const login = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    return { error };
   };
 
-  const login = (password: string): boolean => {
-    if (password === APP_PASSWORD) {
-      const now = new Date().getTime();
-      const expiry = now + SESSION_DURATION;
-      
-      localStorage.setItem(TOKEN_KEY, 'valid_session_' + now);
-      localStorage.setItem(EXPIRY_KEY, expiry.toString());
-      
-      setIsAuthenticated(true);
-      return true;
-    }
-    return false;
+  const resetPassword = async (email: string) => {
+    // Redireciona para a página de update-password após clicar no email
+    // Nota: O HashRouter (#) requer que o link inclua a hash
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/#/update-password`,
+    });
+    return { error };
   };
 
-  const enableBiometrics = () => {
-    localStorage.setItem(BIOMETRIC_KEY, 'true');
-    setIsBiometricEnabled(true);
+  const updatePassword = async (newPassword: string) => {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+    return { error };
   };
 
-  // Usado quando o user volta à app e já tem token válido + biometria ativa
-  const unlockSession = () => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
-        setIsAuthenticated(true);
-    }
-  };
-
-  const logout = () => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(EXPIRY_KEY);
-    localStorage.removeItem(BIOMETRIC_KEY);
-    setIsAuthenticated(false);
-    setIsBiometricEnabled(false);
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setUser(null);
   };
 
   return (
     <AuthContext.Provider value={{ 
-      isAuthenticated, 
-      isBiometricEnabled,
+      isAuthenticated: !!session, 
+      user,
       isLoading, 
       login, 
-      enableBiometrics,
-      unlockSession,
+      resetPassword,
+      updatePassword,
       logout 
     }}>
       {children}
