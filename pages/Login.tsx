@@ -70,7 +70,7 @@ const Login: React.FC = () => {
               <h1 className="text-xl font-bold text-white tracking-wide">
                   {view === 'login' ? 'Acesso Seguro' : 'Recuperar Senha'}
               </h1>
-              <p className="text-teal-200/80 text-xs mt-1">DentalCare Assistant</p>
+              <p className="text-teal-200/80 text-xs mt-1">Shamila Modan Assistant</p>
            </div>
         </div>
 
