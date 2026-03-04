@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<!--
+  ortho_report.html — Design reference for OrthoReportTemplate.tsx
+  This file is NOT loaded at runtime. It documents the intended visual design
+  and serves as a standalone preview of the print template.
+
+  Typography:
+    Titles  → 'Trebuchet MS' (offline Montserrat substitute, geometric sans)
+    Body    → Georgia (system serif, offline)
+  Palette:
+    Background      → #ffffff
+    Text            → #111111
+    Section titles  → #F5F5F5 background, 2.5px #111 left border
+    Rules           → 0.5px #cccccc horizontal lines, no vertical borders
+  Page:
+    Size    → A4 portrait
+    Margins → 2cm all sides
+-->
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relatório Ortodôntico — Referência de Design</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #e5e7eb;
+      font-family: Georgia, 'Times New Roman', serif;
+    }
+
+    @media print {
+      body { background: #fff; padding: 0; }
+      @page { size: A4 portrait; margin: 2cm; }
+      .doc { box-shadow: none; padding: 0; width: 100%; }
+    }
+
+    /* ── Document shell ── */
+    .doc {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 2cm 2.2cm;
+      background: #ffffff;
+      margin: 0 auto;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+      color: #111111;
+      font-size: 10.5pt;
+      line-height: 1.75;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 26px;
+    }
+
+    .title-block { text-align: right; }
+
+    .doc-title {
+      font-family: 'Trebuchet MS', Arial, sans-serif;
+      font-size: 21pt;
+      font-weight: 200;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin: 0 0 14px 0;
+    }
+
+    .meta {
+      font-family: 'Trebuchet MS', Arial, sans-serif;
+      font-size: 7.5pt;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: #888888;
+      line-height: 1.8;
+    }
+
+    .meta strong { color: #111111; }
+
+    /* ── Rules ── */
+    hr {
+      border: none;
+      border-top: 0.5px solid #cccccc;
+      margin: 20px 0;
+    }
+
+    /* ── Patient info grid ── */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+
+    .info-label {
+      font-family: 'Trebuchet MS', Arial, sans-serif;
+      font-size: 7pt;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #888888;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .info-value {
+      font-size: 11.5pt;
+      color: #111111;
+    }
+
+    /* ── Section titles ── */
+    .section-title {
+      display: block;
+      background-color: #F5F5F5;
+      font-family: 'Trebuchet MS', Arial, sans-serif;
+      font-size: 7.5pt;
+      font-weight: 700;
+      letter-spacing: 0.20em;
+      text-transform: uppercase;
+      color: #333333;
+      padding: 5px 10px;
+      margin: 0 0 14px 0;
+      border-left: 2.5px solid #111111;
+    }
+
+    /* ── Body text ── */
+    p {
+      margin: 0 0 10px 0;
+      text-align: justify;
+    }
+
+    /* ── Treatment plan list — horizontal separators only ── */
+    .plan-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .plan-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 6px 0;
+      border-bottom: 0.5px solid #eeeeee;
+      font-size: 10pt;
+      line-height: 1.6;
+    }
+
+    .plan-list li:last-child { border-bottom: none; }
+
+    .bullet {
+      min-width: 20px;
+      width: 20px;
+      height: 20px;
+      border: 1px solid #333333;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 7pt;
+      font-weight: 700;
+      font-family: 'Trebuchet MS', Arial, sans-serif;
+      margin-top: 1px;
+    }
+
+    /* ── Disclaimer ── */
+    .disclaimer {
+      font-size: 8pt;
+      color: #888888;
+      font-style: italic;
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 0.5px solid #eeeeee;
+      text-align: justify;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 40px;
+      padding-top: 18px;
+      border-top: 0.5px solid #cccccc;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: flex-end;
+    }
+
+    .footer-clinic {
+      font-family: 'Trebuchet MS', Arial, sans-serif;
+      font-size: 8pt;
+      color: #888888;
+      line-height: 1.6;
+    }
+
+    .footer-clinic strong { color: #555555; }
+  </style>
+</head>
+<body>
+<div class="doc">
+
+  <!-- HEADER -->
+  <header class="header">
+    <!-- Monogram SVG (inline, no external images) -->
+    <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="36" cy="36" r="34" stroke="#111111" stroke-width="0.75"/>
+      <!-- S -->
+      <path d="M20 26 C20 22.5 23 20 27.5 20 C32 20 35 22.5 35 26 C35 29.5 31 31 27 32.5 C23 34 19 36 19 40 C19 44 22.5 46 27 46 C31.5 46 35 43.5 35 40"
+            stroke="#111111" stroke-width="1.35" stroke-linecap="round" fill="none"/>
+      <!-- M -->
+      <path d="M39 46 L39 22 L48 36 L57 22 L57 46"
+            stroke="#111111" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+
+    <div class="title-block">
+      <h1 class="doc-title">Relatório Ortodôntico</h1>
+      <div class="meta">
+        Data: <strong>DD/MM/AAAA</strong><br/>
+        Dra. Shamila Modan — OrMM nº 3266
+      </div>
+    </div>
+  </header>
+
+  <hr/>
+
+  <!-- PATIENT INFO -->
+  <div class="info-grid">
+    <div>
+      <span class="info-label">Paciente</span>
+      <span class="info-value">Nome Completo do Paciente</span>
+    </div>
+    <div>
+      <span class="info-label">Idade</span>
+      <span class="info-value">XX anos</span>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- DIAGNÓSTICO -->
+  <section style="margin-bottom:22px">
+    <span class="section-title">Diagnóstico</span>
+    <p>
+      Paciente do sexo feminino, 12 anos de idade, apresentando Classe II esquelética severa
+      com perfil convexo acentuado, protrusão labial superior e inferior, sobremordida horizontal
+      (overjet) aumentada e relação molar Classe II bilateralmente. A análise cefalométrica
+      confirma discrepância esquelética de base com retrognatismo mandibular.
+    </p>
+  </section>
+
+  <!-- EXAME CLÍNICO -->
+  <section style="margin-bottom:22px">
+    <span class="section-title">Exame Clínico</span>
+    <p>
+      À análise facial frontal, observa-se simetria facial mantida com terços faciais equilibrados.
+      Em norma lateral, perfil convexo com protrusão labial e aumento do ângulo nasolabial.
+      Intra-oralmente: arcadas superiores e inferiores com apinhamento moderado, overjet de
+      aproximadamente 8mm, overbite aumentado. Higiene oral satisfatória.
+      Análise facial sujeita a confirmação após registo fotográfico definitivo.
+    </p>
+  </section>
+
+  <!-- PLANO DE TRATAMENTO -->
+  <section style="margin-bottom:32px">
+    <span class="section-title">Plano de Tratamento</span>
+    <ul class="plan-list">
+      <li>
+        <span class="bullet">1</span>
+        <span>Colocação de aparelho fixo autoligado (Damon Clear) — arcada superior e inferior</span>
+      </li>
+      <li>
+        <span class="bullet">2</span>
+        <span>Sequência de arcos NiTi termoactivados 0.014" → 0.016" → 0.018" × 0.025" CuNiTi</span>
+      </li>
+      <li>
+        <span class="bullet">3</span>
+        <span>Mola aberta entre dentes 33–31 para correcção de diastema</span>
+      </li>
+      <li>
+        <span class="bullet">4</span>
+        <span>Build-ups oclusais nos dentes 17 e 27 para desoclusão posterior transitória</span>
+      </li>
+      <li>
+        <span class="bullet">5</span>
+        <span>Frenectomia labial superior — após avaliação periodontal</span>
+      </li>
+    </ul>
+  </section>
+
+  <!-- DISCLAIMER -->
+  <p class="disclaimer">
+    Análise facial sujeita a confirmação após registo fotográfico definitivo.
+    Este relatório foi preparado com base nos dados clínicos disponíveis e deverá ser validado
+    pela Dra. Shamila Modan antes de qualquer comunicação ao paciente ou início de tratamento.
+  </p>
+
+  <div style="min-height:48px"></div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-clinic">
+      <strong>Dra. Shamila Modan</strong><br/>
+      Médica Dentista — Pós-Graduanda em Ortodontia<br/>
+      OrMM nº 3266 · +258 84 616 6066<br/>
+      modanshamila@gmail.com · Maputo, Moçambique
+    </div>
+
+    <!-- Signature SVG (inline, no external resources) -->
+    <svg width="248" height="58" viewBox="0 0 248 58" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <text x="4" y="28"
+            font-family="Georgia, 'Times New Roman', serif"
+            font-size="12" font-style="italic" font-weight="400"
+            fill="#111111" letter-spacing="0.4">Dra.</text>
+      <text x="38" y="32"
+            font-family="Georgia, 'Times New Roman', serif"
+            font-size="20" font-style="italic" font-weight="300"
+            fill="#111111" letter-spacing="0.7">Shamila Modan</text>
+      <path d="M2 43 Q62 40 130 43 Q185 45.5 243 42"
+            stroke="#111111" stroke-width="0.65" stroke-linecap="round" fill="none"/>
+      <circle cx="244" cy="42" r="1.1" fill="#111111"/>
+    </svg>
+  </footer>
+
+</div>
+</body>
+</html>

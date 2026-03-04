@@ -16,6 +16,7 @@ import Login from './pages/Login';
 import Budgets from './pages/Budgets';
 import BudgetEditor from './pages/BudgetEditor';
 import UpdatePassword from './pages/UpdatePassword';
+import OrthoReport from './pages/ortho/OrthoReport';
 
 const Layout = () => (
   <div className="min-h-screen bg-gray-50 font-sans text-slate-900">
@@ -61,6 +62,8 @@ const App: React.FC = () => {
               <Route path="budgets/:id" element={<BudgetEditor />} />
               {/* Rota para definir nova senha (acessível apenas se autenticado via link mágico) */}
               <Route path="update-password" element={<UpdatePassword />} />
+              {/* Módulo de Relatórios Ortodônticos com IA */}
+              <Route path="ortho-report" element={<OrthoReport />} />
             </Route>
           </Routes>
         </HashRouter>
