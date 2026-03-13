@@ -503,13 +503,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deletePatient = async (id: string) => {
     try {
+        // Delete related budgets first
+        await supabase.from('orcamentos').delete().eq('paciente_id', id);
+        
+        // Delete related consultations
+        await supabase.from('consultas').delete().eq('paciente_id', id);
+        
+        // Finally delete the patient
         const { error } = await supabase
           .from('pacientes')
           .delete()
           .eq('id', id);
         
         if (error) throw error;
+        
+        // Update local state
         setPatients(prev => prev.filter(p => p.id !== id));
+        setConsultations(prev => prev.filter(c => c.patientId !== id));
+        setBudgets(prev => prev.filter(b => b.patientId !== id));
     } catch (err: any) {
         console.error('Error deleting patient:', err);
         throw err;
@@ -531,12 +542,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (updateError) throw updateError;
 
+      const { error: budgetUpdateError } = await supabase
+        .from('orcamentos')
+        .update({ 
+          paciente_id: targetId,
+          paciente_nome: targetPatient.name 
+        })
+        .eq('paciente_id', sourceId);
+
+      if (budgetUpdateError) throw budgetUpdateError;
+
       await deletePatient(sourceId);
 
       setConsultations(prev => prev.map(c => 
          c.patientId === sourceId 
            ? { ...c, patientId: targetId, patientName: targetPatient.name }
            : c
+      ));
+
+      setBudgets(prev => prev.map(b => 
+         b.patientId === sourceId 
+           ? { ...b, patientId: targetId, patientName: targetPatient.name }
+           : b
       ));
 
     } catch (err: any) {

@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 type SortType = 'name' | 'income' | 'count';
 
 const Patients: React.FC = () => {
-  const { patients, getConsultationsByPatient, addPatient, deletePatient, mergePatients } = useData();
+  const { patients, getConsultationsByPatient, addPatient, deletePatient, mergePatients, budgets } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [sortType, setSortType] = useState<SortType>('name');
   
@@ -32,9 +32,10 @@ const Patients: React.FC = () => {
     return patients.map(p => {
         const history = getConsultationsByPatient(p.id);
         const totalSpent = history.reduce((sum, c) => sum + c.totalValue, 0);
-        return { ...p, historyCount: history.length, totalSpent };
+        const hasBudgets = budgets && budgets.some(b => b.patientId === p.id);
+        return { ...p, historyCount: history.length, totalSpent, hasBudgets };
     });
-  }, [patients, getConsultationsByPatient]);
+  }, [patients, getConsultationsByPatient, budgets]);
 
   const filteredAndSortedPatients = useMemo(() => {
     return [...patientsWithStats]
@@ -57,7 +58,7 @@ const Patients: React.FC = () => {
   // --- Management Logic ---
   
   const ghostPatients = useMemo(() => {
-      return patientsWithStats.filter(p => p.historyCount === 0);
+      return patientsWithStats.filter(p => p.historyCount === 0 && !p.hasBudgets);
   }, [patientsWithStats]);
 
   const duplicateGroups = useMemo(() => {
@@ -111,8 +112,19 @@ const Patients: React.FC = () => {
 
   const handleDeleteAllGhosts = async () => {
       if (window.confirm(`Tem a certeza que deseja apagar todos os ${ghostPatients.length} pacientes sem histórico?`)) {
+          let successCount = 0;
+          let errorCount = 0;
           for (const p of ghostPatients) {
-              await deletePatient(p.id);
+              try {
+                  await deletePatient(p.id);
+                  successCount++;
+              } catch (e) {
+                  console.error("Failed to delete ghost patient", p.id, e);
+                  errorCount++;
+              }
+          }
+          if (errorCount > 0) {
+              alert(`Apagados ${successCount} pacientes. Não foi possível apagar ${errorCount} pacientes (podem ter dados associados).`);
           }
       }
   };
@@ -336,16 +348,19 @@ const Patients: React.FC = () => {
                                         </div>
                                         <div className="flex gap-2">
                                             {/* Botão para MERGE: Este paciente engole os outros */}
-                                            {group.filter(other => other.id !== p.id).map(other => (
-                                                <button
-                                                  key={other.id}
-                                                  onClick={() => handleMerge(p.id, other.id)}
-                                                  className="text-[10px] bg-teal-100 text-teal-700 px-2 py-1 rounded border border-teal-200 hover:bg-teal-200 flex items-center gap-1"
-                                                  title={`Juntar dados de ${other.id} neste`}
-                                                >
-                                                   <Merge size={12} /> Fundir outros aqui
-                                                </button>
-                                            ))}
+                                            <button
+                                              onClick={async () => {
+                                                  if (window.confirm(`Tem a certeza? Todos os outros registos de "${p.name}" serão apagados e o seu histórico será movido para este registo.`)) {
+                                                      const others = group.filter(other => other.id !== p.id);
+                                                      for (const other of others) {
+                                                          await mergePatients(p.id, other.id);
+                                                      }
+                                                  }
+                                              }}
+                                              className="text-xs font-bold bg-teal-50 text-teal-700 px-3 py-1.5 rounded-lg border border-teal-100 hover:bg-teal-100 flex items-center gap-1"
+                                            >
+                                               <Merge size={14} /> Manter este (Fundir outros)
+                                            </button>
                                         </div>
                                      </div>
                                   ))}

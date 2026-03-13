@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, Navigate } from 'react-router-dom';
+import { useParams, Link, Navigate, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { ArrowLeft, Phone, Calendar, Edit2, X, Save } from 'lucide-react';
+import { ArrowLeft, Phone, Calendar, Edit2, X, Save, Trash2 } from 'lucide-react';
 
 const PatientDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { getPatientById, getConsultationsByPatient, updatePatient } = useData();
+  const navigate = useNavigate();
+  const { getPatientById, getConsultationsByPatient, updatePatient, deletePatient } = useData();
   
   const patient = id ? getPatientById(id) : undefined;
   
@@ -66,6 +67,24 @@ const PatientDetails: React.FC = () => {
           alert("Erro ao actualizar dados do paciente.");
       } finally {
           setIsSaving(false);
+      }
+  };
+
+  const handleDelete = async () => {
+      if(!patient) return;
+      
+      const hasHistory = history.length > 0;
+      const confirmMsg = hasHistory 
+          ? `CUIDADO: Este paciente tem ${history.length} consultas no histórico. Apagar o paciente irá apagar também todo o seu histórico. Tem a certeza absoluta?`
+          : "Tem a certeza que deseja apagar este paciente?";
+          
+      if (window.confirm(confirmMsg)) {
+          try {
+              await deletePatient(patient.id);
+              navigate('/patients', { replace: true });
+          } catch (e) {
+              alert("Erro ao apagar o paciente. Pode ter orçamentos ou outros dados associados.");
+          }
       }
   };
 
@@ -199,13 +218,20 @@ const PatientDetails: React.FC = () => {
                <button 
                   onClick={handleSave}
                   disabled={!editName || isSaving}
-                  className="w-full py-3.5 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 disabled:opacity-50 text-base shadow-lg shadow-teal-600/20 flex items-center justify-center gap-2"
+                  className="w-full py-3.5 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 disabled:opacity-50 text-base shadow-lg shadow-teal-600/20 flex items-center justify-center gap-2 mb-3"
                >
                   {isSaving ? 'A guardar...' : (
                       <>
                          <Save size={18} /> Guardar Alterações
                       </>
                   )}
+               </button>
+               
+               <button 
+                  onClick={handleDelete}
+                  className="w-full py-3.5 bg-white text-red-600 font-bold rounded-xl border-2 border-red-100 hover:bg-red-50 text-base flex items-center justify-center gap-2"
+               >
+                  <Trash2 size={18} /> Apagar Paciente
                </button>
             </div>
          </div>
