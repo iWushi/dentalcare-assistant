@@ -290,7 +290,7 @@ const Reports: React.FC = () => {
         ws_data.push([]); // Spacer
         
         // 2. TABLE HEADERS (Row 5)
-        const headers = ["ORDEM", "NOME DO PACIENTE", "TRATAMENTO FEITO", "VALOR", "CLÍNICA"];
+        const headers = ["ORDEM", "DATA DA CONSULTA", "NOME DO PACIENTE", "TRATAMENTO FEITO", "VALOR", "CLÍNICA"];
         ws_data.push(headers);
         
         // 3. DATA ROWS
@@ -302,6 +302,7 @@ const Reports: React.FC = () => {
             
             ws_data.push([
                 index + 1,        // ORDEM
+                formatDateBr(c.date), // DATA DA CONSULTA
                 c.patientName,    // NOME DO PACIENTE
                 treatments,       // TRATAMENTO FEITO (Códigos)
                 c.doctorCommission, // VALOR (Number for Excel calculation)
@@ -310,17 +311,17 @@ const Reports: React.FC = () => {
         });
         
         // 4. TOTAL ROW
-        ws_data.push(["TOTAL", "", "", reportData.totalCommission, ""]);
+        ws_data.push(["TOTAL", "", "", "", reportData.totalCommission, ""]);
 
         // Create Sheet
         const ws = utils.aoa_to_sheet(ws_data);
 
-        // Alteração 2: Formatação de Moeda na coluna VALOR (Coluna index 3 / D)
+        // Alteração 2: Formatação de Moeda na coluna VALOR (Coluna index 4 / E)
         // Começa na linha 6 (índice 5 no array ws_data, que corresponde a linha 6 do Excel)
-        const range = utils.decode_range(ws['!ref'] || "A1:E1");
+        const range = utils.decode_range(ws['!ref'] || "A1:F1");
         // Loop from row 5 (0-indexed, which is Excel row 6) to end
         for (let R = 5; R <= range.e.r; ++R) {
-          const ref = utils.encode_cell({c: 3, r: R}); // Column 3 = D (Valor)
+          const ref = utils.encode_cell({c: 4, r: R}); // Column 4 = E (Valor)
           if (!ws[ref]) continue;
           // Formato: #,##0.00 (Separador de milhares e 2 casas decimais)
           ws[ref].z = "#,##0.00";
@@ -330,6 +331,7 @@ const Reports: React.FC = () => {
         // Set Column Widths (Approximate character count)
         ws['!cols'] = [
             { wch: 8 },  // ORDEM
+            { wch: 15 }, // DATA DA CONSULTA
             { wch: 30 }, // PACIENTE
             { wch: 50 }, // TRATAMENTO
             { wch: 15 }, // VALOR

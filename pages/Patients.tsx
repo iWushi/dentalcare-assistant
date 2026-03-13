@@ -109,6 +109,14 @@ const Patients: React.FC = () => {
       }
   };
 
+  const handleDeleteAllGhosts = async () => {
+      if (window.confirm(`Tem a certeza que deseja apagar todos os ${ghostPatients.length} pacientes sem histórico?`)) {
+          for (const p of ghostPatients) {
+              await deletePatient(p.id);
+          }
+      }
+  };
+
   const handleMerge = async (targetId: string, sourceId: string) => {
       if (window.confirm("Tem a certeza? O paciente duplicado será apagado e as suas consultas movidas para o principal.")) {
           await mergePatients(targetId, sourceId);
@@ -288,6 +296,16 @@ const Patients: React.FC = () => {
                    {manageTab === 'ghosts' ? (
                       <div className="space-y-3">
                          {ghostPatients.length === 0 && <div className="text-center text-gray-400 py-8 text-sm">Tudo limpo! Sem pacientes vazios.</div>}
+                         {ghostPatients.length > 0 && (
+                            <div className="flex justify-end mb-2">
+                               <button 
+                                 onClick={handleDeleteAllGhosts}
+                                 className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 flex items-center gap-1"
+                               >
+                                  <Trash2 size={14} /> Limpar Todos ({ghostPatients.length})
+                               </button>
+                            </div>
+                         )}
                          {ghostPatients.map(p => (
                             <div key={p.id} className="bg-white p-3 rounded-xl border border-gray-200 flex justify-between items-center">
                                <div>
