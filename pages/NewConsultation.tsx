@@ -1,9 +1,15 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { ArrowLeft, Plus, Trash2, Search, Save, UserPlus, X, ChevronDown, Ban, FlaskConical, Calendar, ArrowDown, Bell } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Search, Save, UserPlus, X, ChevronDown, Ban, FlaskConical, Calendar, ArrowDown, Bell, Landmark, Wallet, AlertCircle } from 'lucide-react';
 import { CLINICS, calculateProcedureCommission } from '../constants';
 import { Procedure, Consultation, Clinic } from '../types';
+
+// Procedimento no formulário, com a divisão opcional convenção/beneficiário (só usada no modo parcial)
+interface FormProcedure extends Procedure {
+  convencao?: number;   // parte paga agora (seguradora/convenção)
+  beneficiario?: number; // parte que fica pendente
+}
 
 // Helper for local date string YYYY-MM-DD
 const getTodayStr = () => {
@@ -14,8 +20,38 @@ const getTodayStr = () => {
   return `${year}-${month}-${day}`;
 };
 
+const round2 = (val: number) => Math.round((val + Number.EPSILON) * 100) / 100;
+
 const formatMoney = (val: number) => {
   return val.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' MT';
+};
+
+// Só o número (sem sufixo MT), para caber dentro de campos e da grelha da guia
+const formatNum = (val: number) => formatMoney(val || 0).replace(' MT', '');
+
+// Interpreta o que a médica escreve num campo de dinheiro (aceita "20 952,38", "20952.38", etc.)
+const parseMoneyInput = (str: string): number => {
+  if (!str) return 0;
+  let s = String(str).replace(/\s/g, '').replace(/[^\d.,]/g, '');
+  if (s.includes('.') && s.includes(',')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.');
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+};
+
+// UUID à prova de falhas (crypto.randomUUID pode não existir em contextos não seguros)
+const makeUuid = (): string => {
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  } catch { /* ignora */ }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 };
 
 const NewConsultation: React.FC = () => {
@@ -33,18 +69,23 @@ const NewConsultation: React.FC = () => {
   const [patientInput, setPatientInput] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<{id: string, name: string} | null>(null);
   const [procedureInput, setProcedureInput] = useState('');
-  const [selectedProcedures, setSelectedProcedures] = useState<Procedure[]>([]);
+  const [selectedProcedures, setSelectedProcedures] = useState<FormProcedure[]>([]);
   const [notes, setNotes] = useState('');
-  
+
   // --- Reminder State ---
   const [isReminderActive, setIsReminderActive] = useState(false);
   const [reminderText, setReminderText] = useState('');
-  
+
+  // --- Pagamento parcial (seguro / prestações) ---
+  const [isPartialActive, setIsPartialActive] = useState(false);
+  const [insurer, setInsurer] = useState('');   // seguradora
+  const [guia, setGuia] = useState('');          // nº da guia
+
   // --- UI State ---
   const [showPatientModal, setShowPatientModal] = useState(false);
   const [newPatientName, setNewPatientName] = useState('');
   const [newPatientPhone, setNewPatientPhone] = useState('+258 ');
-  const [submissionSuccess, setSubmissionSuccess] = useState<{id: string, value: number} | null>(null);
+  const [submissionSuccess, setSubmissionSuccess] = useState<{id: string, value: number, pendente?: number} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- NEW CALCULATION LOGIC (Mixed Rates) ---
@@ -52,20 +93,55 @@ const NewConsultation: React.FC = () => {
     let totalGross = 0;
     let totalLab = 0;
     let totalCommission = 0;
+    let totalConvencao = 0;
+    let totalBeneficiario = 0;
 
     selectedProcedures.forEach(p => {
         const val = p.value || 0;
         const lab = p.labCost || 0;
         totalGross += val;
         totalLab += lab;
-        
+
         const code = String(p.code || '').trim().toUpperCase();
-        // Uses centralized logic to guarantee consistency with DB
-        totalCommission += calculateProcedureCommission(val, lab, code);
+
+        if (isPartialActive) {
+            const conv = p.convencao ?? val;
+            const benef = p.beneficiario ?? 0;
+            totalConvencao += conv;
+            totalBeneficiario += benef;
+            // Comissão apenas sobre o que é cobrado agora (parte convenção)
+            totalCommission += calculateProcedureCommission(conv, lab, code);
+        } else {
+            // Uses centralized logic to guarantee consistency with DB
+            totalCommission += calculateProcedureCommission(val, lab, code);
+        }
     });
 
-    return { totalGross, totalLab, totalCommission };
-  }, [selectedProcedures]);
+    return {
+        totalGross,
+        totalLab,
+        totalCommission,
+        totalConvencao,
+        totalBeneficiario,
+        totalTratamento: totalGross,                                  // valor cheio (referência)
+        totalRecebidoAgora: isPartialActive ? totalConvencao : totalGross
+    };
+  }, [selectedProcedures, isPartialActive]);
+
+  // Validação do modo parcial: convenção + beneficiário tem de bater certo com o total de cada procedimento
+  const splitError = useMemo(() => {
+    if (!isPartialActive) return null;
+    for (const p of selectedProcedures) {
+        const val = p.value || 0;
+        const conv = p.convencao ?? val;
+        const benef = p.beneficiario ?? 0;
+        const diff = round2(conv + benef - val);
+        if (Math.abs(diff) > 0.01) {
+            return { code: p.code, name: p.name, total: val, conv, benef, diff };
+        }
+    }
+    return null;
+  }, [isPartialActive, selectedProcedures]);
 
   // --- Top Used Codes Logic ---
   const topProcedures = useMemo(() => {
@@ -150,13 +226,16 @@ const NewConsultation: React.FC = () => {
     const code = dbPrice.id || dbPrice.code;
     // Auto-activate Lab Toggle ONLY for 'J' codes (Prótese)
     const isLabCode = code.trim().toUpperCase().startsWith('J');
+    const value = dbPrice.valor_com_iva || dbPrice.value;
 
-    const newProc: Procedure = {
+    const newProc: FormProcedure = {
       code: code,
       name: dbPrice.descricao || dbPrice.name,
-      value: dbPrice.valor_com_iva || dbPrice.value,
+      value: value,
       labCost: 0,
-      isLabPending: isLabCode // Starts ON only for J
+      isLabPending: isLabCode, // Starts ON only for J
+      // No modo parcial, por defeito tudo é pago agora (convenção); a médica move o que fica pendente
+      ...(isPartialActive ? { convencao: value, beneficiario: 0 } : {})
     };
     setSelectedProcedures([...selectedProcedures, newProc]);
     setProcedureInput('');
@@ -184,6 +263,35 @@ const NewConsultation: React.FC = () => {
     setSelectedProcedures(newProcs);
   };
 
+  // --- Pagamento parcial: activar e dividir cada procedimento ---
+  const handleTogglePartial = (active: boolean) => {
+    setIsPartialActive(active);
+    if (active) {
+      // Por defeito, tudo é pago agora (convenção); a médica move o que fica pendente
+      setSelectedProcedures(prev => prev.map(p => ({
+        ...p,
+        convencao: p.convencao ?? p.value,
+        beneficiario: p.beneficiario ?? 0
+      })));
+    }
+  };
+
+  const updateConvencao = (index: number, str: string) => {
+    setSelectedProcedures(prev => prev.map((p, i) => {
+      if (i !== index) return p;
+      const conv = Math.min(Math.max(round2(parseMoneyInput(str)), 0), p.value);
+      return { ...p, convencao: conv, beneficiario: round2(p.value - conv) };
+    }));
+  };
+
+  const updateBeneficiario = (index: number, str: string) => {
+    setSelectedProcedures(prev => prev.map((p, i) => {
+      if (i !== index) return p;
+      const benef = Math.min(Math.max(round2(parseMoneyInput(str)), 0), p.value);
+      return { ...p, beneficiario: benef, convencao: round2(p.value - benef) };
+    }));
+  };
+
   const handleProcedureKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !procedureInput && selectedProcedures.length > 0) {
         e.preventDefault();
@@ -193,27 +301,70 @@ const NewConsultation: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!selectedPatient || selectedProcedures.length === 0 || isSubmitting) return;
+    // Em modo parcial, não deixa gravar enquanto as contas de cada procedimento não baterem certo
+    if (isPartialActive && splitError) return;
     setIsSubmitting(true);
 
     const tempId = `2025-${Math.floor(Math.random() * 100000)}`;
 
-    const newConsultation: Consultation = {
-      id: tempId,
-      date,
-      clinic,
-      patientId: selectedPatient.id,
-      patientName: selectedPatient.name,
-      procedures: selectedProcedures,
-      totalValue: totals.totalGross,
-      doctorCommission: totals.totalCommission,
-      hasPendingLab: false, // Calculated by context
-      notes: notes,
-      reminder: isReminderActive ? reminderText : undefined,
-      hasReminder: isReminderActive
-    };
+    let newConsultation: Consultation;
+
+    if (isPartialActive) {
+      const valorPendente = round2(totals.totalBeneficiario);
+      // Cada procedimento guarda a parte cobrada agora (convenção) como o seu valor
+      const procedures: Procedure[] = selectedProcedures.map(p => ({
+        code: p.code,
+        name: p.name,
+        value: round2(p.convencao ?? p.value),
+        labCost: p.labCost,
+        isLabPending: p.isLabPending
+      }));
+
+      newConsultation = {
+        id: tempId,
+        date,
+        clinic,
+        patientId: selectedPatient.id,
+        patientName: selectedPatient.name,
+        procedures,
+        totalValue: round2(totals.totalConvencao),   // dinheiro cobrado agora
+        doctorCommission: totals.totalCommission,
+        hasPendingLab: false,
+        notes,
+        reminder: isReminderActive ? reminderText : undefined,
+        hasReminder: isReminderActive,
+        // Pagamento parcial
+        pagamentoGrupoId: makeUuid(),
+        tipoPagamento: 'convencao',
+        valorTratamento: round2(totals.totalTratamento),
+        valorPendente,
+        estadoPagamento: valorPendente > 0.005 ? 'pendente' : 'liquidado',
+        seguradora: insurer.trim() || undefined,
+        guiaNumero: guia.trim() || undefined
+      };
+    } else {
+      newConsultation = {
+        id: tempId,
+        date,
+        clinic,
+        patientId: selectedPatient.id,
+        patientName: selectedPatient.name,
+        procedures: selectedProcedures,
+        totalValue: totals.totalGross,
+        doctorCommission: totals.totalCommission,
+        hasPendingLab: false, // Calculated by context
+        notes: notes,
+        reminder: isReminderActive ? reminderText : undefined,
+        hasReminder: isReminderActive
+      };
+    }
 
     await addConsultation(newConsultation);
-    setSubmissionSuccess({ id: tempId, value: totals.totalCommission });
+    setSubmissionSuccess({
+      id: tempId,
+      value: totals.totalCommission,
+      pendente: isPartialActive ? round2(totals.totalBeneficiario) : undefined
+    });
     setIsSubmitting(false);
   };
 
@@ -227,6 +378,9 @@ const NewConsultation: React.FC = () => {
     setSubmissionSuccess(null);
     setIsReminderActive(false);
     setReminderText('');
+    setIsPartialActive(false);
+    setInsurer('');
+    setGuia('');
   };
 
   const patientSuggestions = patientInput.length > 0 && !selectedPatient
@@ -259,7 +413,23 @@ const NewConsultation: React.FC = () => {
               <span className="text-gray-500">Comissão Dra.</span>
               <span className="font-bold text-teal-600">{formatMoney(submissionSuccess.value)}</span>
             </div>
+            {submissionSuccess.pendente != null && submissionSuccess.pendente > 0 && (
+              <div className="flex justify-between mt-3 pt-3 border-t border-gray-100">
+                <span className="text-amber-600 font-medium">Ficou pendente</span>
+                <span className="font-bold text-amber-600">{formatMoney(submissionSuccess.pendente)}</span>
+              </div>
+            )}
           </div>
+
+          {submissionSuccess.pendente != null && submissionSuccess.pendente > 0 && (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-6 text-left flex items-start gap-2">
+              <Wallet size={18} className="text-amber-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-800 leading-relaxed">
+                Guardámos <strong>{formatMoney(submissionSuccess.pendente)}</strong> por receber.
+                Vais encontrá-lo no ecrã <strong>Pendentes</strong> (no Início) quando a paciente pagar o resto.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-3">
             <button 
@@ -530,6 +700,157 @@ const NewConsultation: React.FC = () => {
            </div>
         </div>
 
+        {/* 3.5 Pagamento Parcial (Seguro / Prestações) */}
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+           <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase">
+                 <Landmark size={14} />
+                 Pagamento parcial (seguro / prestações)
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                 <div className={`w-9 h-5 rounded-full transition-colors relative ${isPartialActive ? 'bg-teal-500' : 'bg-gray-300'}`}>
+                    <div className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${isPartialActive ? 'translate-x-4' : ''}`}></div>
+                 </div>
+                 <input
+                    type="checkbox"
+                    checked={isPartialActive}
+                    onChange={(e) => handleTogglePartial(e.target.checked)}
+                    className="hidden"
+                 />
+              </label>
+           </div>
+
+           {!isPartialActive && (
+              <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+                 Liga isto quando uma parte é paga agora (pela seguradora) e o resto fica para a paciente pagar mais tarde.
+              </p>
+           )}
+
+           {isPartialActive && (
+             <div className="mt-4 space-y-4 animate-in slide-in-from-top-2">
+                {/* Seguradora + Guia */}
+                <div className="grid grid-cols-2 gap-3">
+                   <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Seguradora</label>
+                      <input
+                        type="text"
+                        value={insurer}
+                        onChange={(e) => setInsurer(e.target.value)}
+                        placeholder="Ex: MAXIMO"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-base focus:ring-2 focus:ring-teal-500 focus:outline-none placeholder:text-gray-400"
+                      />
+                   </div>
+                   <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Nº da guia</label>
+                      <input
+                        type="text"
+                        value={guia}
+                        onChange={(e) => setGuia(e.target.value)}
+                        placeholder="Ex: 1.673/SMS"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-base focus:ring-2 focus:ring-teal-500 focus:outline-none placeholder:text-gray-400"
+                      />
+                   </div>
+                </div>
+
+                {selectedProcedures.length === 0 ? (
+                   <div className="text-center py-6 text-gray-300 text-sm border-2 border-dashed border-gray-100 rounded-xl">
+                      Adiciona procedimentos primeiro
+                   </div>
+                ) : (
+                  <>
+                    {/* Divisão de cada procedimento: paga agora vs. fica pendente */}
+                    <div className="space-y-3">
+                       {selectedProcedures.map((proc, idx) => {
+                          const total = proc.value || 0;
+                          const conv = proc.convencao ?? total;
+                          const benef = proc.beneficiario ?? 0;
+                          const balanced = Math.abs(round2(conv + benef - total)) <= 0.01;
+                          return (
+                            <div key={idx} className={`rounded-xl p-3 border ${balanced ? 'bg-gray-50 border-gray-100' : 'bg-red-50 border-red-200'}`}>
+                               <div className="flex justify-between items-baseline mb-2">
+                                  <div className="min-w-0 pr-2">
+                                     <span className="text-xs font-bold bg-white border border-gray-200 px-1.5 py-0.5 rounded text-slate-500 mr-2">{proc.code}</span>
+                                     <span className="text-sm text-slate-600">{proc.name}</span>
+                                  </div>
+                                  <span className="text-xs text-gray-400 whitespace-nowrap">Total {formatNum(total)}</span>
+                               </div>
+                               <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                     <label className="text-[10px] font-bold text-teal-600 uppercase mb-1 block">Paga agora</label>
+                                     <div className="flex items-center gap-1 bg-white border border-teal-200 rounded-lg px-2 py-2">
+                                        <input
+                                           inputMode="decimal"
+                                           value={formatNum(conv)}
+                                           onChange={(e) => updateConvencao(idx, e.target.value)}
+                                           className="w-full outline-none text-slate-800 font-bold text-sm min-w-0"
+                                        />
+                                        <span className="text-[10px] font-bold text-gray-400">MT</span>
+                                     </div>
+                                  </div>
+                                  <div>
+                                     <label className="text-[10px] font-bold text-amber-600 uppercase mb-1 block">Fica pendente</label>
+                                     <div className="flex items-center gap-1 bg-white border border-amber-200 rounded-lg px-2 py-2">
+                                        <input
+                                           inputMode="decimal"
+                                           value={formatNum(benef)}
+                                           onChange={(e) => updateBeneficiario(idx, e.target.value)}
+                                           className="w-full outline-none text-slate-800 font-bold text-sm min-w-0"
+                                        />
+                                        <span className="text-[10px] font-bold text-gray-400">MT</span>
+                                     </div>
+                                  </div>
+                               </div>
+                            </div>
+                          );
+                       })}
+                    </div>
+
+                    {/* Resumo no formato da guia em papel */}
+                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                       <div className="grid grid-cols-4 gap-1 text-[10px] font-bold uppercase mb-2 pb-2 border-b border-slate-200">
+                          <span></span>
+                          <span className="text-right text-gray-400">Total</span>
+                          <span className="text-right text-teal-600">Paga agora</span>
+                          <span className="text-right text-amber-600">Pendente</span>
+                       </div>
+                       <div className="grid grid-cols-4 gap-1 text-xs py-1">
+                          <span className="text-gray-500">Sub-total</span>
+                          <span className="text-right text-slate-600">{formatNum(totals.totalTratamento / 1.05)}</span>
+                          <span className="text-right text-slate-600">{formatNum(totals.totalConvencao / 1.05)}</span>
+                          <span className="text-right text-slate-600">{formatNum(totals.totalBeneficiario / 1.05)}</span>
+                       </div>
+                       <div className="grid grid-cols-4 gap-1 text-xs py-1">
+                          <span className="text-gray-500">IVA 5%</span>
+                          <span className="text-right text-slate-600">{formatNum(totals.totalTratamento - totals.totalTratamento / 1.05)}</span>
+                          <span className="text-right text-slate-600">{formatNum(totals.totalConvencao - totals.totalConvencao / 1.05)}</span>
+                          <span className="text-right text-slate-600">{formatNum(totals.totalBeneficiario - totals.totalBeneficiario / 1.05)}</span>
+                       </div>
+                       <div className="grid grid-cols-4 gap-1 text-sm font-bold py-2 mt-1 border-t border-slate-200">
+                          <span className="text-slate-700">Total</span>
+                          <span className="text-right text-slate-800">{formatNum(totals.totalTratamento)}</span>
+                          <span className="text-right text-teal-600">{formatNum(totals.totalConvencao)}</span>
+                          <span className="text-right text-amber-600">{formatNum(totals.totalBeneficiario)}</span>
+                       </div>
+                    </div>
+
+                    {/* Aviso quando as contas não batem certo */}
+                    {splitError && (
+                       <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+                          <AlertCircle size={18} className="text-red-500 mt-0.5 shrink-0" />
+                          <p className="text-xs text-red-700 leading-relaxed">
+                             No <strong>{splitError.code}</strong>: "paga agora" mais "fica pendente" ({formatNum(splitError.conv)} + {formatNum(splitError.benef)}) tem de dar o total {formatNum(splitError.total)}.
+                             {' '}{splitError.diff > 0
+                               ? `Estás ${formatNum(Math.abs(splitError.diff))} MT acima.`
+                               : `Faltam ${formatNum(Math.abs(splitError.diff))} MT.`}
+                          </p>
+                       </div>
+                    )}
+                  </>
+                )}
+             </div>
+           )}
+        </div>
+
         {/* 4. Summary & Notes (Including Reminder Toggle) */}
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
            
@@ -580,10 +901,27 @@ const NewConsultation: React.FC = () => {
            />
 
            <div className="border-t border-gray-100 pt-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                 <span className="text-gray-500">Valor Bruto</span>
-                 <span className="font-medium text-slate-700">{formatMoney(totals.totalGross)}</span>
-              </div>
+              {isPartialActive ? (
+                <>
+                  <div className="flex justify-between text-sm">
+                     <span className="text-gray-500">Tratamento (total)</span>
+                     <span className="font-medium text-slate-700">{formatMoney(totals.totalTratamento)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                     <span className="text-teal-600">Recebido agora</span>
+                     <span className="font-medium text-teal-700">{formatMoney(totals.totalConvencao)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                     <span className="text-amber-600">Fica pendente</span>
+                     <span className="font-medium text-amber-600">{formatMoney(totals.totalBeneficiario)}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between text-sm">
+                   <span className="text-gray-500">Valor Bruto</span>
+                   <span className="font-medium text-slate-700">{formatMoney(totals.totalGross)}</span>
+                </div>
+              )}
               {totals.totalLab > 0 && (
                 <div className="flex justify-between text-sm text-amber-600">
                    <span>- Custo Laboratório</span>
@@ -591,7 +929,7 @@ const NewConsultation: React.FC = () => {
                 </div>
               )}
               <div className="flex justify-between items-center pt-2">
-                 <span className="font-bold text-slate-800">Comissão Estimada</span>
+                 <span className="font-bold text-slate-800">{isPartialActive ? 'Comissão (do recebido)' : 'Comissão Estimada'}</span>
                  <span className="text-2xl font-bold text-teal-600">{formatMoney(totals.totalCommission)}</span>
               </div>
               <div className="text-[10px] text-gray-400 text-right leading-tight mt-1">
@@ -614,7 +952,7 @@ const NewConsultation: React.FC = () => {
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!selectedPatient || selectedProcedures.length === 0 || isSubmitting}
+              disabled={!selectedPatient || selectedProcedures.length === 0 || isSubmitting || (isPartialActive && !!splitError)}
               className="flex-[2] bg-teal-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-teal-600/20 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 active:scale-98"
             >
             {isSubmitting ? 'A guardar...' : (

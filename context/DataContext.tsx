@@ -210,7 +210,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             date: safeDate,
             createdAt: c.criado_em,
             patientId: c.paciente_id,
-            patientName: c.paciente_nome, 
+            patientName: c.paciente_nome,
             clinic: c.clinica,
             procedures: proceduresList,
             totalValue: safeTotalValue,
@@ -218,7 +218,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             hasPendingLab: isPending,
             notes: c.observacoes,
             reminder: reminderText,
-            hasReminder: reminderText.length > 0
+            hasReminder: reminderText.length > 0,
+            // Pagamentos parciais
+            pagamentoGrupoId: c.pagamento_grupo_id || undefined,
+            tipoPagamento: c.tipo_pagamento || undefined,
+            valorTratamento: c.valor_tratamento != null ? parseCurrency(c.valor_tratamento) : undefined,
+            valorPendente: parseCurrency(c.valor_pendente),
+            estadoPagamento: c.estado_pagamento || undefined,
+            seguradora: c.seguradora || undefined,
+            guiaNumero: c.guia_numero || undefined
           };
         });
 
@@ -292,6 +300,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const baseCalc = Math.max(0, consultation.totalValue - totalLabCost);
       const valorSemIva = baseCalc / 1.05;
 
+      // --- Pagamentos parciais ---
+      // Consulta parcial = há uma parte que fica pendente (convenção paga agora, beneficiário depois).
+      const isPartial = !!consultation.tipoPagamento && consultation.tipoPagamento !== 'integral';
+      const valorPendente = isPartial ? (consultation.valorPendente || 0) : 0;
+      const estadoPagamento: 'pendente' | 'liquidado' =
+        isPartial && valorPendente > 0.005 ? 'pendente' : 'liquidado';
+
       const dbPayload = {
         id: consultation.id,
         data: consultation.date,
@@ -305,6 +320,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         valor_final_dra: totalCommission, // Stores the precise calculated commission
         observacoes: consultation.notes || '',
         lembrete: consultation.reminder || null, // New Reminder Column
+        // Pagamentos parciais
+        pagamento_grupo_id: consultation.pagamentoGrupoId || null,
+        tipo_pagamento: consultation.tipoPagamento || 'integral',
+        valor_tratamento: isPartial ? (consultation.valorTratamento ?? null) : null,
+        valor_pendente: valorPendente,
+        estado_pagamento: estadoPagamento,
+        seguradora: isPartial ? (consultation.seguradora || null) : null,
+        guia_numero: isPartial ? (consultation.guiaNumero || null) : null,
         criado_em: new Date().toISOString()
       };
 
@@ -314,11 +337,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) throw error;
       
-      const newConsLocal: Consultation = { 
-        ...consultation, 
-        doctorCommission: totalCommission, 
+      const newConsLocal: Consultation = {
+        ...consultation,
+        doctorCommission: totalCommission,
         hasPendingLab: (totalLabCost === 0 && consultation.procedures.some(p => p.isLabPending)),
-        hasReminder: !!consultation.reminder
+        hasReminder: !!consultation.reminder,
+        tipoPagamento: consultation.tipoPagamento || 'integral',
+        valorPendente: valorPendente,
+        estadoPagamento: estadoPagamento
       };
       setConsultations(prev => [newConsLocal, ...prev]);
       
