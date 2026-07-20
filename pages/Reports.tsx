@@ -3,9 +3,9 @@ import { useData } from '../context/DataContext';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, PieChart, Pie
 } from 'recharts';
-import { 
-  TrendingUp, TrendingDown, FileSpreadsheet, ChevronRight, 
-  Building2, Map as MapIcon, Calendar, Target, FlaskConical, Info
+import {
+  TrendingUp, TrendingDown, FileSpreadsheet, ChevronRight,
+  Building2, Map as MapIcon, Calendar, Target, FlaskConical, Info, Wallet
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OBJETIVO_MENSAL, CLINICS, PROCEDURE_CATEGORIES } from '../constants';
@@ -204,6 +204,20 @@ const Reports: React.FC = () => {
     };
   }, [consultations, filterType, selMonth, selYear, dateRange, todayStr, availableProcedures]);
 
+  // --- Valores Pendentes (em aberto — snapshot actual, à parte do período) ---
+  // NOTA: valor_tratamento (valorTratamento) é só referência e NUNCA entra em somas.
+  const pendentesData = useMemo(() => {
+    const list = (consultations || [])
+      .filter(c => c.estadoPagamento === 'pendente' && (c.valorPendente || 0) > 0.005)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const total = list.reduce((sum, c) => sum + (c.valorPendente || 0), 0);
+    const recebido = (c: typeof list[number]) =>
+      c.valorTratamento != null
+        ? Math.max(0, Math.round((c.valorTratamento - (c.valorPendente || 0)) * 100) / 100)
+        : (c.totalValue || 0);
+    return { list, total, recebido };
+  }, [consultations]);
+
   // --- Patients Stats (Novos vs Recorrentes) ---
   const patientStats = useMemo(() => {
       const targetYear = parseInt(selYear);
@@ -313,19 +327,39 @@ const Reports: React.FC = () => {
         // 4. TOTAL ROW
         ws_data.push(["TOTAL", "", "", "", reportData.totalCommission, ""]);
 
+        // 5. VALORES PENDENTES (EM ABERTO) — secção separada do facturado, para cobrança
+        if (pendentesData.list.length > 0) {
+            ws_data.push([]);
+            ws_data.push([]);
+            ws_data.push(["VALORES PENDENTES (EM ABERTO) — a cobrar, à parte do facturado"]);
+            ws_data.push(["DATA", "PACIENTE", "SEGURADORA", "GUIA", "JÁ RECEBIDO", "PENDENTE"]);
+            pendentesData.list.forEach(c => {
+                ws_data.push([
+                    formatDateBr(c.date),
+                    c.patientName,
+                    c.seguradora || '',
+                    c.guiaNumero || '',
+                    pendentesData.recebido(c),
+                    c.valorPendente || 0
+                ]);
+            });
+            ws_data.push(["", "", "", "TOTAL EM ABERTO", "", pendentesData.total]);
+        }
+
         // Create Sheet
         const ws = utils.aoa_to_sheet(ws_data);
 
-        // Alteração 2: Formatação de Moeda na coluna VALOR (Coluna index 4 / E)
-        // Começa na linha 6 (índice 5 no array ws_data, que corresponde a linha 6 do Excel)
+        // Formatação de moeda nas colunas E (index 4) e F (index 5), apenas onde a célula
+        // é número. A guarda protege o texto (ex.: coluna CLÍNICA) de virar número.
         const range = utils.decode_range(ws['!ref'] || "A1:F1");
-        // Loop from row 5 (0-indexed, which is Excel row 6) to end
         for (let R = 5; R <= range.e.r; ++R) {
-          const ref = utils.encode_cell({c: 4, r: R}); // Column 4 = E (Valor)
-          if (!ws[ref]) continue;
-          // Formato: #,##0.00 (Separador de milhares e 2 casas decimais)
-          ws[ref].z = "#,##0.00";
-          ws[ref].t = 'n'; // Force type number
+          for (const C of [4, 5]) {
+            const ref = utils.encode_cell({ c: C, r: R });
+            const cell = ws[ref];
+            if (!cell || typeof cell.v !== 'number') continue;
+            cell.z = "#,##0.00";
+            cell.t = 'n';
+          }
         }
         
         // Set Column Widths (Approximate character count)
@@ -696,6 +730,43 @@ const Reports: React.FC = () => {
              "Estou a atrair novos pacientes ou apenas a acompanhar os habituais?"
          </p>
       </section>
+
+      {/* 7. VALORES PENDENTES (EM ABERTO) */}
+      {pendentesData.list.length > 0 && (
+        <section className="bg-white rounded-2xl p-6 shadow-sm border border-rose-100">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-medium text-slate-800 flex items-center gap-2">
+              <Wallet size={18} className="text-rose-500" /> Valores pendentes
+            </h2>
+            <span className="text-xs font-bold bg-rose-50 text-rose-600 px-2 py-1 rounded-full">{pendentesData.list.length}</span>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-4">Em aberto neste momento, à parte do facturado. É o que há a cobrar.</p>
+
+          <div className="divide-y divide-gray-50">
+            {pendentesData.list.map(c => (
+              <div key={c.id} className="flex justify-between items-start gap-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="font-bold text-slate-700 text-sm truncate">{c.patientName}</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">
+                    {formatDateBr(c.date)}
+                    {c.seguradora ? ` · ${c.seguradora}` : ''}
+                    {c.guiaNumero ? ` · Guia ${c.guiaNumero}` : ''}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="font-bold text-rose-600 text-sm">{formatMoney(c.valorPendente || 0)}</div>
+                  <div className="text-[10px] text-gray-400">já recebeu {formatMoney(pendentesData.recebido(c))}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-between items-center mt-4 pt-3 border-t-2 border-slate-100">
+            <span className="font-bold text-slate-800">Total em aberto</span>
+            <span className="text-xl font-bold text-rose-600">{formatMoney(pendentesData.total)}</span>
+          </div>
+        </section>
+      )}
 
       <div className="h-6"></div>
     </div>
