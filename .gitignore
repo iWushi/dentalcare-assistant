@@ -1,0 +1,12 @@
+# Dependências e artefactos de build
+node_modules/
+dist/
+package-lock.json
+
+# Ambiente
+.env
+.env.local
+*.local
+
+# Sistema
+.DS_Store
