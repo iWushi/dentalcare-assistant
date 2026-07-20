@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Patient, Consultation, DbPrice, Procedure, Budget } from '../types';
+import { Patient, Consultation, DbPrice, Procedure, Budget, EstadoPagamento } from '../types';
 import { supabase } from '../services/supabase';
 import { calculateProcedureCommission } from '../constants';
 
@@ -23,6 +23,9 @@ interface DataContextType {
   // Métodos de Orçamentos
   saveBudget: (budget: Budget) => Promise<string>; // Retorna ID
   deleteBudget: (id: string) => Promise<void>;
+
+  // Pagamentos parciais
+  registarPagamentoRemanescente: (consultaId: string, data: string, valor: number) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -678,6 +681,59 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   };
 
+  // --- PAGAMENTOS PARCIAIS ---
+  // Regista o pagamento do remanescente de uma conta pendente, via função RPC atómica.
+  const registarPagamentoRemanescente = async (consultaId: string, data: string, valor: number): Promise<void> => {
+    const original = consultations.find(c => c.id === consultaId);
+    if (!original) throw new Error("Consulta não encontrada.");
+
+    const { data: novaRow, error } = await supabase.rpc('registar_pagamento_remanescente', {
+      p_consulta_id: consultaId,
+      p_data: data,
+      p_valor: valor
+    });
+    if (error) throw error;
+
+    // A função devolve a nova linha (o recebimento de agora)
+    const row: any = Array.isArray(novaRow) ? novaRow[0] : novaRow;
+
+    // Constrói a nova consulta a partir da original (mesmos procedimentos/paciente) + valores devolvidos
+    const nova: Consultation = {
+      id: row?.id || `temp-${Date.now()}`,
+      date: normalizeDate(row?.data || data),
+      createdAt: row?.criado_em,
+      patientId: original.patientId,
+      patientName: original.patientName,
+      clinic: original.clinic,
+      procedures: original.procedures,
+      totalValue: parseCurrency(row?.valor_total ?? valor),
+      doctorCommission: parseCurrency(row?.valor_final_dra ?? 0),
+      hasPendingLab: false,
+      notes: row?.observacoes || '',
+      tipoPagamento: 'remanescente',
+      estadoPagamento: 'liquidado',
+      valorPendente: 0,
+      valorTratamento: original.valorTratamento,
+      seguradora: original.seguradora,
+      guiaNumero: original.guiaNumero,
+      pagamentoGrupoId: row?.pagamento_grupo_id || original.pagamentoGrupoId
+    };
+
+    // Actualiza estado local: abate ao pendente da original e adiciona a nova linha
+    setConsultations(prev => {
+      const updated = prev.map(c => {
+        if (c.id !== consultaId) return c;
+        const novoPendente = Math.max(0, Math.round(((c.valorPendente || 0) - valor) * 100) / 100);
+        return {
+          ...c,
+          valorPendente: novoPendente,
+          estadoPagamento: (novoPendente <= 0.005 ? 'liquidado' : 'pendente') as EstadoPagamento
+        };
+      });
+      return [nova, ...updated];
+    });
+  };
+
   return (
     <DataContext.Provider value={{
       patients,
@@ -696,7 +752,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deletePatient,
       mergePatients,
       saveBudget,
-      deleteBudget
+      deleteBudget,
+      registarPagamentoRemanescente
     }}>
       {children}
     </DataContext.Provider>

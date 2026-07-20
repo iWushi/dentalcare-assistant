@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Plus, TrendingUp, TrendingDown, AlertTriangle, ChevronRight, Calendar, Target, Building2, Map as MapIcon, Info, LogOut, FlaskConical, Bell } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, AlertTriangle, ChevronRight, Calendar, Target, Building2, Map as MapIcon, Info, LogOut, FlaskConical, Bell, Wallet } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { OBJETIVO_MENSAL, CLINICS } from '../constants';
 
@@ -17,13 +17,15 @@ const Dashboard: React.FC = () => {
   const todayStr = now.toISOString().split('T')[0];
   const todayDay = now.getDate();
   
-  const { 
-    totalCommission, 
+  const {
+    totalCommission,
     pendingLabsList,
     activeRemindersList,
-    percentGoal, 
-    remainingGoal, 
-    sommerschieldTotal, 
+    pendentesCount,
+    totalPendente,
+    percentGoal,
+    remainingGoal,
+    sommerschieldTotal,
     baixaTotal,
     variation,
     recentConsultations
@@ -43,6 +45,11 @@ const Dashboard: React.FC = () => {
 
     // REMINDERS LOGIC: Consultations with active reminders
     const activeRemindersList = consultations.filter(c => c.hasReminder && c.reminder).slice(0, 5);
+
+    // PAGAMENTOS PENDENTES: contas por receber (convenção/prestações)
+    const pendentesArr = consultations.filter(c => c.estadoPagamento === 'pendente' && (c.valorPendente || 0) > 0.005);
+    const pendentesCount = pendentesArr.length;
+    const totalPendente = pendentesArr.reduce((sum, c) => sum + (Number(c.valorPendente) || 0), 0);
 
     // Clínicas
     const sommerschieldTotal = monthlyConsultations
@@ -88,6 +95,8 @@ const Dashboard: React.FC = () => {
         totalCommission,
         pendingLabsList,
         activeRemindersList,
+        pendentesCount,
+        totalPendente,
         percentGoal,
         remainingGoal,
         sommerschieldTotal,
@@ -95,7 +104,7 @@ const Dashboard: React.FC = () => {
         variation,
         recentConsultations
     };
-  }, [consultations, currentYear, currentMonth, todayDay]);
+  }, [consultations, currentYear, currentMonth, todayDay, todayStr]);
 
   const formatMoney = (val: number) => {
      return (val || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' MT';
@@ -198,6 +207,30 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* CARTÃO DESTAQUE: Pagamentos por receber (convenção / prestações) */}
+      {pendentesCount > 0 && (
+        <Link
+          to="/pendentes"
+          className="block bg-white border border-rose-200 rounded-2xl p-4 shadow-sm hover:border-rose-300 transition-colors animate-in fade-in slide-in-from-bottom-2"
+        >
+          <div className="flex items-center gap-3">
+            <div className="bg-rose-100 p-2.5 rounded-full text-rose-600 shrink-0">
+              <Wallet size={20} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-sm font-bold text-slate-800">Por receber</h3>
+                <span className="text-[11px] text-rose-500 font-medium">
+                  {pendentesCount} {pendentesCount === 1 ? 'conta' : 'contas'}
+                </span>
+              </div>
+              <p className="text-lg font-bold text-rose-600 leading-tight">{formatMoney(totalPendente)}</p>
+            </div>
+            <ChevronRight size={18} className="text-rose-300 shrink-0" />
+          </div>
+        </Link>
+      )}
 
       {/* ALERT CARD: Custos de laboratório pendentes */}
       {pendingLabsList.length > 0 && (
